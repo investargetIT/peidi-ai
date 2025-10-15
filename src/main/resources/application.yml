@@ -5,8 +5,8 @@ spring:
 #    url: jdbc:mysql://121.43.145.161:3306/peidi?allowPublicKeyRetrieval=true&useSSL=false&useUnicode=true&characterEncoding=UTF-8
     url: jdbc:mysql://121.43.145.161:3306/peidi_test?allowPublicKeyRetrieval=true&useSSL=false&useUnicode=true&characterEncoding=UTF-8
     driver-class-name: com.mysql.cj.jdbc.Driver
-    username: root
-    password: peidi2024!
+    username: 
+    password:
   # JPA 配置内容，对应 JpaProperties 类
   jpa:
     show-sql: true # 打印 SQL 。生产环境，建议关闭
@@ -25,4 +25,5 @@ spring:
     endpoint: a
     accessKeyId: a
     accessKeySecret: a
+
     bucketName: a
