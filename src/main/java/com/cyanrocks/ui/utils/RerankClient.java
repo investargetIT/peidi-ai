@@ -27,7 +27,7 @@ public class RerankClient {
     private HttpClientService httpClientService;
 
 
-    private static final String API_KEY = "jina_a8b840971a994b00a1ab31b9553e3f06u1BjAWBHoNjzHRdPldZbYioG6ITx";
+    private static final String API_KEY = "";
     private static final String API_URL = "https://api.jina.ai/v1/rerank";
 
     public List<Double> rerank(String query, List<String> documents) throws IOException {
