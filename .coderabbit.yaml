@@ -1,0 +1,26 @@
+review:
+  # 代码审查配置
+  max_comments: 100
+  language: "zh"  # 使用中文评论
+
+  # 文件类型配置
+  file_patterns:
+    - "**/*.java"
+    - "**/*.xml"
+    - "**/*.properties"
+    - "**/*.yaml"
+    - "**/*.yml"
+
+  # 忽略的文件
+  exclude_patterns:
+    - "**/target/**"
+    - "**/test/**"
+    - "**/*Test.java"
+    - "**/generated/**"
+
+  # 审查规则
+  rules:
+    security: true
+    performance: true
+    best_practices: true
+    code_smells: true
