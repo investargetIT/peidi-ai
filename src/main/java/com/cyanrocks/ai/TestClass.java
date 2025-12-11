@@ -1,4 +1,4 @@
-package com.cyanrocks.ui;
+package com.cyanrocks.ai;
 
 /**
  * @Author wjq

@@ -11,7 +11,6 @@ import com.openai.client.okhttp.OpenAIOkHttpClient;
 import com.openai.core.http.StreamResponse;
 import com.openai.models.*;
 import org.apache.commons.io.IOUtils;
-import org.apache.commons.lang3.StringUtils;
 import org.apache.http.HttpEntity;
 import org.apache.http.client.config.RequestConfig;
 import org.apache.http.client.methods.CloseableHttpResponse;
@@ -21,19 +20,19 @@ import org.apache.http.entity.StringEntity;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClients;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.web.multipart.MultipartFile;
 
 import javax.imageio.ImageIO;
-import java.awt.*;
 import java.awt.image.BufferedImage;
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.lang.Thread;
 import java.net.SocketTimeoutException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.util.Base64;
@@ -47,8 +46,8 @@ import java.util.concurrent.TimeUnit;
 @Component
 public class AiModelUtils {
 
-    @Value("${dashscope.api-key}")
-    private String DASHSCOPE_API_KEY;
+    private static final String DASHSCOPE_API_KEY = "";
+//    private static final String DASHSCOPE_API_KEY = "sk-17ec61d83bba433f8acb638aeced5ab8";
 
     @Autowired
     private AiModelMapper aiModelMapper;
@@ -138,7 +137,7 @@ public class AiModelUtils {
         return null;
     }
 
-    public String getIntelligenceWordCloud(List<String> wordList) {
+    public String getIntelligenceWordCloud(List<String> wordList){
         final int MAX_RETRIES = 3;
         AiModel aiModel = aiModelMapper.selectOne(Wrappers.<AiModel>lambdaQuery().eq(AiModel::getType, "getIntelligenceWordCloud").eq(AiModel::getActive, true));
         for (int attempt = 0; attempt < MAX_RETRIES; attempt++) {
@@ -221,14 +220,12 @@ public class AiModelUtils {
         return null;
     }
 
-    public String parseIntelligenceProduct(MultipartFile file) {
+    public String parseIntelligenceProduct(MultipartFile file){
         AiModel aiModel = aiModelMapper.selectOne(Wrappers.<AiModel>lambdaQuery().eq(AiModel::getType, "parseIntelligenceProduct").eq(AiModel::getActive, true));
         BufferedImage image = imageConverter.toBufferedImage(file);
         final int MAX_RETRIES = 3;
-        String base64Image = convertImageToJpegBase64(image);
-        if (StringUtils.isEmpty(base64Image)) {
-            return null;
-        }
+        String base64Image = imageToBase64(image);
+
         for (int attempt = 0; attempt < MAX_RETRIES; attempt++) {
             try (CloseableHttpClient httpClient = HttpClients.createDefault()) {
                 HttpPost httpPost = new HttpPost("https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation");
@@ -273,8 +270,7 @@ public class AiModelUtils {
                     if (entity != null) {
                         try (InputStream inputStream = entity.getContent()) {
                             String responseBody = IOUtils.toString(inputStream, StandardCharsets.UTF_8);
-                            System.out.println(response.getStatusLine().getStatusCode());
-                            System.out.println(responseBody);
+
                             if (response.getStatusLine().getStatusCode() == 200) {
                                 JSONObject jsonResponse = JSONObject.parseObject(responseBody);
                                 JSONObject output = jsonResponse.getJSONObject("output");
@@ -301,11 +297,8 @@ public class AiModelUtils {
                             }
                         }
                     }
-                } catch (Exception e) {
-                    System.out.println("execute error");
                 }
-            } catch (IOException e) {
-                System.out.println("io error");
+            } catch (IOException | InterruptedException e) {
                 try {
                     TimeUnit.SECONDS.sleep(1);
                 } catch (InterruptedException ie) {
@@ -344,7 +337,7 @@ public class AiModelUtils {
                 system.put("role", "system");
                 system.put("content", aiModel.getPrompt());
                 messages.add(system);
-                historyList.forEach(history -> {
+                historyList.forEach(history->{
                     JSONObject user = new JSONObject();
                     user.put("role", "user");
                     user.put("content", history.getQuery());
@@ -410,7 +403,7 @@ public class AiModelUtils {
                         }
                     }
                 }
-            } catch (SocketTimeoutException e) {
+            }catch (SocketTimeoutException e) {
                 throw e;
             } catch (Exception e) {
                 System.out.println("调用模型时发生未知错误" + e);
@@ -585,7 +578,7 @@ public class AiModelUtils {
         return null;
     }
 
-    public String callWithAnalysisJson(String question, String json) {
+    public String callWithAnalysisJson(String json) {
         final int MAX_RETRIES = 3;
         AiModel aiModel = aiModelMapper.selectOne(Wrappers.<AiModel>lambdaQuery().eq(AiModel::getType, "callWithAnalysisJson").eq(AiModel::getActive, true));
         for (int attempt = 0; attempt < MAX_RETRIES; attempt++) {
@@ -608,7 +601,7 @@ public class AiModelUtils {
                 messages.add(system);
                 JSONObject user = new JSONObject();
                 user.put("role", "user");
-                user.put("content", "问题是" + question + "结果json是" + json);
+                user.put("content", "json是" + json);
                 messages.add(user);
 
                 input.put("messages", messages);
@@ -692,7 +685,7 @@ public class AiModelUtils {
 
                 JSONObject user = new JSONObject();
                 user.put("role", "user");
-                user.put("content", "当前问题是：" + question + "\n表、字段、字段参考基础sql和业务逻辑解释是：" + text);
+                user.put("content", "当前问题是：" + question + "\n表、字段逻辑解释和参考数据是：" + text);
                 messages.add(user);
 
                 input.put("messages", messages);
@@ -920,31 +913,14 @@ public class AiModelUtils {
         return null;
     }
 
-    private String convertImageToJpegBase64(BufferedImage originalImage) {
-        try {
-            // 创建一个新的RGB图像（移除Alpha通道）
-            BufferedImage jpegImage = new BufferedImage(
-                    originalImage.getWidth(),
-                    originalImage.getHeight(),
-                    BufferedImage.TYPE_INT_RGB
-            );
-
-            // 绘制到新图像上
-            Graphics2D g2d = jpegImage.createGraphics();
-            try {
-                g2d.drawImage(originalImage, 0, 0, Color.WHITE, null);
-            } finally {
-                g2d.dispose();
-            }
-            // 转换为Base64
-            ByteArrayOutputStream baos = new ByteArrayOutputStream();
-            ImageIO.write(jpegImage, "jpg", baos);
+    private static String imageToBase64(BufferedImage image) {
+        try (ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
+            ImageIO.write(image, "jpg", baos);
             byte[] imageBytes = baos.toByteArray();
             return Base64.getEncoder().encodeToString(imageBytes);
-        } catch (Exception e) {
-            System.out.println("image convert error");
+        } catch (IOException e) {
+            return "";
         }
-        return null;
     }
 
     public String processFile(Path tempFile) {
@@ -979,102 +955,6 @@ public class AiModelUtils {
             System.err.println("请参考文档：https://help.aliyun.com/zh/model-studio/developer-reference/error-code");
         }
         return fullResponse.toString();
-    }
-
-    public String processPageWithQwen(MultipartFile file) {
-        AiModel aiModel = aiModelMapper.selectOne(Wrappers.<AiModel>lambdaQuery().eq(AiModel::getType, "processPageWithQwen").eq(AiModel::getActive, true));
-        BufferedImage image = imageConverter.toBufferedImage(file);
-        final int MAX_RETRIES = 3;
-        String base64Image = convertImageToJpegBase64(image);
-        if (StringUtils.isEmpty(base64Image)) {
-            return null;
-        }
-        for (int attempt = 0; attempt < MAX_RETRIES; attempt++) {
-            try (CloseableHttpClient httpClient = HttpClients.createDefault()) {
-                HttpPost httpPost = new HttpPost("https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation");
-                httpPost.setHeader("Authorization", "Bearer " + DASHSCOPE_API_KEY);
-                httpPost.setHeader("Content-Type", "application/json");
-
-                JSONObject requestBody = new JSONObject();
-                requestBody.put("model", aiModel.getModelName());
-
-                JSONObject input = new JSONObject();
-                JSONArray messages = new JSONArray();
-
-                JSONObject message = new JSONObject();
-                message.put("role", "user");
-
-                JSONArray content = new JSONArray();
-
-                // 添加图像内容
-                JSONObject imageContent = new JSONObject();
-                imageContent.put("image", "data:image/jpeg;base64," + base64Image);
-                content.add(imageContent);
-
-                // 添加文本提示
-                JSONObject textContent = new JSONObject();
-                textContent.put("text", aiModel.getPrompt());
-                content.add(textContent);
-
-                message.put("content", content);
-                messages.add(message);
-
-                input.put("messages", messages);
-                requestBody.put("input", input);
-
-                httpPost.setEntity(new StringEntity(
-                        requestBody.toJSONString(),
-                        ContentType.APPLICATION_JSON
-                ));
-
-                // 执行请求
-                try (CloseableHttpResponse response = httpClient.execute(httpPost)) {
-                    HttpEntity entity = response.getEntity();
-                    if (entity != null) {
-                        try (InputStream inputStream = entity.getContent()) {
-                            String responseBody = IOUtils.toString(inputStream, StandardCharsets.UTF_8);
-                            System.out.println(response.getStatusLine().getStatusCode());
-                            System.out.println(responseBody);
-                            if (response.getStatusLine().getStatusCode() == 200) {
-                                JSONObject jsonResponse = JSONObject.parseObject(responseBody);
-                                JSONObject output = jsonResponse.getJSONObject("output");
-                                JSONArray choices = output.getJSONArray("choices");
-                                JSONObject firstChoice = choices.getJSONObject(0);
-                                JSONObject messageObj = firstChoice.getJSONObject("message");
-
-                                // 提取文本内容
-                                Object contentObj = messageObj.get("content");
-                                if (contentObj instanceof JSONArray) {
-                                    JSONArray contentArray = (JSONArray) contentObj;
-                                    for (int i = 0; i < contentArray.size(); i++) {
-                                        JSONObject item = contentArray.getJSONObject(i);
-                                        if (item.containsKey("text")) {
-                                            return item.getString("text");
-                                        }
-                                    }
-                                } else if (contentObj instanceof String) {
-                                    return (String) contentObj;
-                                }
-                                return null;
-                            } else {
-                                TimeUnit.SECONDS.sleep(2);
-                            }
-                        }
-                    }
-                } catch (Exception e) {
-                    System.out.println("execute error");
-                }
-            } catch (IOException e) {
-                System.out.println("io error");
-                try {
-                    TimeUnit.SECONDS.sleep(1);
-                } catch (InterruptedException ie) {
-                    Thread.currentThread().interrupt();
-                }
-            } catch (Exception e) {
-            }
-        }
-        return null;
     }
 
 }

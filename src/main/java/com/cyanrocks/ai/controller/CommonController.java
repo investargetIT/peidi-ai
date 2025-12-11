@@ -2,7 +2,6 @@ package com.cyanrocks.ai.controller;
 
 import cn.hutool.core.util.URLUtil;
 import com.cyanrocks.ai.dao.entity.AiEnum;
-import com.cyanrocks.ai.service.AiChewyDetailService;
 import com.cyanrocks.ai.service.CommonSettingService;
 import com.cyanrocks.ai.utils.OssUtils;
 import io.swagger.annotations.Api;
@@ -13,7 +12,6 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.util.UriUtils;
 
 import javax.servlet.http.HttpServletRequest;
@@ -26,6 +24,9 @@ import java.util.regex.Pattern;
 /**
  * @Author wjq
  * @Date 2024/9/19 16:37
+ *
+ *
+ *
  */
 @RestController
 @RequestMapping("/ai/common")
@@ -36,16 +37,13 @@ public class CommonController {
     private CommonSettingService settingService;
 
     @Autowired
-    private AiChewyDetailService aiChewyDetailService;
-
-    @Autowired
     private OssUtils ossUtils;
 
     @GetMapping("/enum")
 
 
     @ApiOperation(value = "获取枚举列表")
-    public List<AiEnum> getEnumList(@RequestParam(value = "type") String type) {
+    public List<AiEnum> getEnumList(@RequestParam(value="type") String type) {
         return settingService.getEnumList(type);
     }
 
@@ -63,7 +61,7 @@ public class CommonController {
 
     @GetMapping("/download")
     @ApiOperation(value = "下载文件")
-    public ResponseEntity<Object> downloadExcel(@RequestParam(value = "objectName") String objectName, @RequestParam(value = "authorization", required = false) String authorization,
+            public ResponseEntity<Object> downloadExcel(@RequestParam(value="objectName") String objectName, @RequestParam(value="authorization", required = false) String authorization,
                                                 HttpServletRequest request, HttpServletResponse response) {
         byte[] fileContent = ossUtils.downloadFromOss(objectName);
 
@@ -73,9 +71,9 @@ public class CommonController {
         HttpHeaders headers = new HttpHeaders();
         try {
             String[] objectNames = objectName.split("/");
-            String fileName = objectNames[objectNames.length - 1];
+            String fileName = objectNames[objectNames.length-1];
             response.addHeader("Content-Disposition", "attachment;filename="
-                    + new String(request.getHeader("User-Agent").contains("MSIE") ? fileName.getBytes() : fileName.getBytes(StandardCharsets.UTF_8), "ISO8859-1"));
+                    + new String(request.getHeader("User-Agent").contains("MSIE")?fileName.getBytes():fileName.getBytes(StandardCharsets.UTF_8),"ISO8859-1"));
         } catch (UnsupportedEncodingException e) {
             e.printStackTrace();
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(null);
@@ -127,39 +125,23 @@ public class CommonController {
         }
 
         switch (ext) {
-            case ".pdf":
-                return "application/pdf";
-            case ".doc":
-                return "application/msword";
-            case ".docx":
-                return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-            case ".xls":
-                return "application/vnd.ms-excel";
-            case ".xlsx":
-                return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
-            case ".txt":
-                return "text/plain";
-            case ".csv":
-                return "text/csv";
-            default:
-                return "application/octet-stream";
+            case ".pdf": return "application/pdf";
+            case ".doc": return "application/msword";
+            case ".docx": return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+            case ".xls": return "application/vnd.ms-excel";
+            case ".xlsx": return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+            case ".txt": return "text/plain";
+            case ".csv": return "text/csv";
+            default: return "application/octet-stream";
         }
     }
 
     @GetMapping("/download-url")
     @ApiOperation(value = "获取文件url")
-    public String downloadUrl(@RequestParam(value = "objectName") String objectName,
-                              HttpServletRequest request, HttpServletResponse response) throws Exception {
+    public String downloadUrl(@RequestParam(value="objectName") String objectName,
+                                                HttpServletRequest request, HttpServletResponse response) throws Exception {
         return ossUtils.downloadUrl(objectName);
 
     }
 
-    @PostMapping("/chewy/parse")
-    @ApiOperation(value = "文件上传")
-    public void parseChewy(@RequestParam(value = "url") String url,
-                             @RequestParam(value = "title") String title,
-                             @RequestParam(value = "detail",required = false) MultipartFile detail,
-                             @RequestParam(value = "ingredientInformation",required = false) MultipartFile ingredientInformation) {
-        aiChewyDetailService.parseChewy(url, title, detail, ingredientInformation);
-    }
 }

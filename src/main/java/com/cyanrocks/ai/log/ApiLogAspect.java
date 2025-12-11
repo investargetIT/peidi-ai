@@ -35,14 +35,11 @@ public class ApiLogAspect {
         try {
             // 获取请求信息
             ServletRequestAttributes attributes = (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
-            if (attributes == null) {
-                return result;
-            }
             HttpServletRequest request = attributes.getRequest();
 
             // 设置日志信息
-            apiLog.setUserId(request.getAttribute("userId") != null ? request.getAttribute("userId").toString() : "unknown");
-            apiLog.setUserName(request.getAttribute("userName") != null ? request.getAttribute("userName").toString() : "unknown");
+            apiLog.setUserId(attributes.getRequest().getAttribute("userId").toString());
+            apiLog.setUserName(attributes.getRequest().getAttribute("userName").toString());
             apiLog.setRequestUri(request.getRequestURI());
             apiLog.setOperation(log.value());
             apiLog.setTime(LocalDateTime.now());
