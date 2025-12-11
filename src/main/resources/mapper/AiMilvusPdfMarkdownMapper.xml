@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.cyanrocks.ai.dao.mapper.AiMilvusPdfMarkdownMapper">
+    <resultMap id="AiMilvusPdfMarkdown" type="com.cyanrocks.ai.dao.entity.AiMilvusPdfMarkdown">
+        <result property="title" column="title"/>
+        <result property="reportType" column="report_type"/>
+        <result property="reportDate" column="report_date"/>
+        <result property="expireDate" column="expire_date"/>
+        <result property="source" column="source"/>
+        <result property="productName" column="product_name"/>
+        <result property="reportId" column="report_id"/>
+        <result property="sourceSystem" column="source_system"/>
+        <result property="lang" column="lang"/>
+        <result property="ingestDate" column="ingest_date"/>
+        <result property="version" column="version"/>
+        <result property="checksum" column="checksum"/>
+        <result property="visibility" column="visibility"/>
+        <result property="tags" column="tags"/>
+        <result property="standardRefs" column="standardRefs"/>
+        <result property="docStatus" column="doc_status"/>
+        <result property="brand" column="brand"/>
+        <result property="sku" column="sku"/>
+        <result property="spec" column="spec"/>
+        <result property="metedate" column="metedate"/>
+        <result property="createAt" column="create_at"/>
+        <result property="updateAt" column="update_at"/>
+        <collection property="markdownList" column="title"
+                    select="getMarkdownListByParentTitle" fetchType="lazy">
+            <result property="milvusId" column="milvus_id"/>
+            <result property="text" column="text"/>
+            <result property="batchNo" column="batch_no"/>
+        </collection>
+    </resultMap>
+    <select id="getMilvusPdfMarkdownPage" resultMap="AiMilvusPdfMarkdown">
+        select * from(
+        select * from ai_milvus_pdf_markdown t1
+        <if test="search != '' and search != null">
+            where ${search}
+        </if>
+        )a
+         group by title
+        <if test="sort != '' and sort != null">
+            order by ${sort},id asc
+        </if>
+    </select>
+
+    <select id="getMarkdownListByParentTitle" resultType="com.cyanrocks.ai.dao.entity.AiMilvusPdfMarkdown">
+        select milvus_id, text, batch_no
+        from ai_milvus_pdf_markdown
+        where title = #{title}
+    </select>
+
+    <select id="getUsageCnt" resultType="Integer">
+        SELECT COUNT(*) AS total
+        FROM (
+                 SELECT COUNT(*) AS cnt
+                 FROM ai_milvus_pdf_markdown
+                <if test="reportType != '' and reportType != null">
+                    where report_type = #{reportType}
+                </if>
+                 GROUP BY title
+             ) t;
+    </select>
+
+    <select id="getValidCnt" resultType="Integer">
+        SELECT COUNT(*) AS total
+        FROM (
+        SELECT COUNT(*) AS cnt
+        FROM ai_milvus_pdf_markdown
+        where doc_status = '有效'
+        <if test="reportType != '' and reportType != null">
+            and report_type = #{reportType}
+        </if>
+        GROUP BY title
+        ) t;
+    </select>
+</mapper>
