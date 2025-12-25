@@ -118,7 +118,7 @@ public class GbiManager {
     }
 
     public void streamCallWithCallbackNew(String query, GbiCardParamBO cardParamBO, Function<GbiCardParamBO, String> streamingFunction, Function<GbiCardParamBO, String> updateFunction, StringRedisTemplate stringRedisTemplate, String redisKey,String userId) throws Exception {
-        Map<String, String> result = milvusUtils.gbiSearch(query, "gbi_qa", userId);
+        Map<String, String> result = milvusUtils.gbiSearch(query, "gbi_table","gbi_explain", userId);
         cardParamBO.setContent("### 执行过程\n");
         streamingFunction.apply(cardParamBO);
         cardParamBO.setContent("- 问题重写：" + result.get("rewriteQuery") + "\n");

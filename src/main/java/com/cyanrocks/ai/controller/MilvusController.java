@@ -52,7 +52,6 @@ public class MilvusController {
 
     @GetMapping("/page")
     @ApiOperation(value = "获取分页")
-    @Log(value = "知识库接口-获取分页")
     public IPage<AiMilvusPdfMarkdown> getMilvusPdfMarkdownPage(@RequestParam int pageNo, @RequestParam int pageSize,
                                                                @RequestParam(value = "sortStr", required = false) String sortStr,
                                                                @RequestParam(value = "searchStr", required = false) String searchStr) {
@@ -61,7 +60,6 @@ public class MilvusController {
 
     @PostMapping("/new")
     @ApiOperation(value = "文件上传")
-    @Log(value = "知识库接口-文件上传")
     public void newMilvusPdfMarkdown(@RequestParam("request") String request,
                           @RequestParam("file") MultipartFile file) {
         fileToMarkdownConverter.processFile(file, request, milvusCollection);

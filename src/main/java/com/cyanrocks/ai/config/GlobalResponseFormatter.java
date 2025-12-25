@@ -30,6 +30,10 @@ public class GlobalResponseFormatter implements ResponseBodyAdvice<Object> {
         GenericResponse<Object> genericResponse = GenericResponse.success(o);
         // 处理字符串时，遇到了类型转换的问题，debug一步一步跟踪，原来是对于字符串的ContentType是“text-plain”，
         // ConverterType是StringHttpMessageConverter这个类型转换，
+        if (o == null) {
+            // 创建data为null的成功响应对象，并转换为JSON字符串
+            return GenericResponse.success(null);
+        }
         // 由于将结果封装成了自定义的GenericResponse类型，所以有GenericResponse转换成String报错
         // 所以需要对String类型的返回值单独进行处理
         if (o instanceof String) {

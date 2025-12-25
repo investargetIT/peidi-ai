@@ -120,7 +120,11 @@ public class AiIntelligenceService extends ServiceImpl<AiIntelligenceProductMapp
     }
 
     public String parseIntelligenceProduct(MultipartFile file){
-        return aiModelUtils.parseIntelligenceProduct(file);
+        String result = aiModelUtils.parseIntelligenceProduct(file);
+        if (StringUtils.isEmpty(result)){
+            throw new BusinessException(500,"未成功识别图片");
+        }
+        return result;
     }
 
     public List<RedditMilvus> question(String question, String collectionName) throws Exception {
