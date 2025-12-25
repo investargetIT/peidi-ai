@@ -43,8 +43,8 @@ public class EmbeddingResourceManager {
         try {
             TextEmbeddingParam param = TextEmbeddingParam.builder()
                     .model("text-embedding-v4")
+//                    .apiKey("")
                     .apiKey("")
-//                    .apiKey("sk-17ec61d83bba433f8acb638aeced5ab8")
                     .texts(Collections.singletonList(text))
                     .build();
 
