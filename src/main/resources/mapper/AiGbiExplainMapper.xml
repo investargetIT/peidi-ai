@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.cyanrocks.ai.dao.mapper.AiGbiExplainMapper">
+    <resultMap id="AiGbiExplain" type="com.cyanrocks.ai.dao.entity.AiGbiExplain">
+        <id property="id" column="id"/>
+        <result property="milvusId" column="milvus_id"/>
+        <result property="gbiExplain" column="gbi_explain"/>
+        <result property="explainType" column="explain_type"/>
+    </resultMap>
+    <select id="getGbiExplainPage" resultMap="AiGbiExplain">
+        select * from ai_gbi_explain
+        <if test="search != '' and search != null">
+            where ${search}
+        </if>
+        order by
+        <if test="sort != '' and sort != null">
+            ${sort},
+        </if>
+        id desc
+    </select>
+
+</mapper>

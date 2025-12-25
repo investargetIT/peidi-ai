@@ -84,7 +84,7 @@ public class AiMilvusPdfMarkdownService extends ServiceImpl<AiMilvusPdfMarkdownM
                 .eq(AiMilvusPdfMarkdown::getTitle, title.getTitle()));
         olds.forEach(old -> {
             milvusPdfMarkdown.setMilvusId(old.getMilvusId());
-            if (milvusUtils.deleteMilvusPdfMarkdownById(milvusPdfMarkdown, collection)){
+            if (milvusUtils.deleteMilvusById(milvusPdfMarkdown.getMilvusId(), collection)){
                 baseMapper.deleteById(old.getId());
             }
         });
