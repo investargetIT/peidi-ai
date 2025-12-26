@@ -21,6 +21,7 @@ import org.apache.http.entity.StringEntity;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClients;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -46,7 +47,8 @@ import java.util.concurrent.TimeUnit;
 @Component
 public class AiModelUtils {
 
-    private static final String DASHSCOPE_API_KEY = "";
+    @Value("${dashscope.api-key}")
+    private String DASHSCOPE_API_KEY;
 
     @Autowired
     private AiModelMapper aiModelMapper;
