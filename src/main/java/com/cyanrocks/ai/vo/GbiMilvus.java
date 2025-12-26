@@ -14,26 +14,26 @@ import java.util.List;
 @Data
 public class GbiMilvus {
     @ApiModelProperty(value = "id")
-    public long id;
+    private long id;
 
     @ApiModelProperty(value = "milvusId")
-    public String milvusId;
+    private String milvusId;
 
     @ApiModelProperty(value = "表名")
-    public String tableName;
+    private String tableName;
 
     @ApiModelProperty(value = "相关字段")
-    public String field;
+    private String field;
 
     @ApiModelProperty(value = "参考sql")
-    public String searchSql;
+    private String searchSql;
 
     @ApiModelProperty(value = "扩展字段")
-    public String metedate;
+    private String metedate;
 
     @ApiModelProperty(value = "业务逻辑解释")
-    public String gbiExplain;
+    private String gbiExplain;
 
     @ApiModelProperty(value = "业务逻辑解释类型")
-    public Boolean explainType;
+    private Boolean explainType;
 }
