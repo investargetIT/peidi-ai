@@ -138,7 +138,7 @@ public class AiModelUtils {
         return null;
     }
 
-    public String getIntelligenceWordCloud(List<String> wordList) {
+    public String getIntelligenceWordCloud(List<String> wordList){
         final int MAX_RETRIES = 3;
         AiModel aiModel = aiModelMapper.selectOne(Wrappers.<AiModel>lambdaQuery().eq(AiModel::getType, "getIntelligenceWordCloud").eq(AiModel::getActive, true));
         for (int attempt = 0; attempt < MAX_RETRIES; attempt++) {
@@ -221,12 +221,12 @@ public class AiModelUtils {
         return null;
     }
 
-    public String parseIntelligenceProduct(MultipartFile file) {
+    public String parseIntelligenceProduct(MultipartFile file){
         AiModel aiModel = aiModelMapper.selectOne(Wrappers.<AiModel>lambdaQuery().eq(AiModel::getType, "parseIntelligenceProduct").eq(AiModel::getActive, true));
         BufferedImage image = imageConverter.toBufferedImage(file);
         final int MAX_RETRIES = 3;
         String base64Image = convertImageToJpegBase64(image);
-        if (StringUtils.isEmpty(base64Image)) {
+        if (StringUtils.isEmpty(base64Image)){
             return null;
         }
         for (int attempt = 0; attempt < MAX_RETRIES; attempt++) {
@@ -301,7 +301,7 @@ public class AiModelUtils {
                             }
                         }
                     }
-                } catch (Exception e) {
+                }catch (Exception e){
                     System.out.println("execute error");
                 }
             } catch (IOException e) {
@@ -344,7 +344,7 @@ public class AiModelUtils {
                 system.put("role", "system");
                 system.put("content", aiModel.getPrompt());
                 messages.add(system);
-                historyList.forEach(history -> {
+                historyList.forEach(history->{
                     JSONObject user = new JSONObject();
                     user.put("role", "user");
                     user.put("content", history.getQuery());
@@ -410,7 +410,7 @@ public class AiModelUtils {
                         }
                     }
                 }
-            } catch (SocketTimeoutException e) {
+            }catch (SocketTimeoutException e) {
                 throw e;
             } catch (Exception e) {
                 System.out.println("调用模型时发生未知错误" + e);
@@ -921,7 +921,7 @@ public class AiModelUtils {
     }
 
     private String convertImageToJpegBase64(BufferedImage originalImage) {
-        try {
+        try{
             // 创建一个新的RGB图像（移除Alpha通道）
             BufferedImage jpegImage = new BufferedImage(
                     originalImage.getWidth(),
@@ -941,7 +941,7 @@ public class AiModelUtils {
             ImageIO.write(jpegImage, "jpg", baos);
             byte[] imageBytes = baos.toByteArray();
             return Base64.getEncoder().encodeToString(imageBytes);
-        } catch (Exception e) {
+        }catch (Exception e){
             System.out.println("image convert error");
         }
         return null;
@@ -981,12 +981,12 @@ public class AiModelUtils {
         return fullResponse.toString();
     }
 
-    public String processPageWithQwen(MultipartFile file) {
+    public String processPageWithQwen(MultipartFile file){
         AiModel aiModel = aiModelMapper.selectOne(Wrappers.<AiModel>lambdaQuery().eq(AiModel::getType, "processPageWithQwen").eq(AiModel::getActive, true));
         BufferedImage image = imageConverter.toBufferedImage(file);
         final int MAX_RETRIES = 3;
         String base64Image = convertImageToJpegBase64(image);
-        if (StringUtils.isEmpty(base64Image)) {
+        if (StringUtils.isEmpty(base64Image)){
             return null;
         }
         for (int attempt = 0; attempt < MAX_RETRIES; attempt++) {
@@ -1061,7 +1061,7 @@ public class AiModelUtils {
                             }
                         }
                     }
-                } catch (Exception e) {
+                }catch (Exception e){
                     System.out.println("execute error");
                 }
             } catch (IOException e) {
