@@ -36,6 +36,7 @@ import io.milvus.v2.service.vector.response.QueryResp;
 import io.milvus.v2.service.vector.response.SearchResp;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
@@ -62,12 +63,15 @@ public class AiIntelligenceService extends ServiceImpl<AiIntelligenceProductMapp
     @Autowired
     private AiEnumMapper aiEnumMapper;
 
+    @Value("${milvus.uri}")
+    private String milvusUri;
+
     private static final String REDIS_KEY = "intelligence:wordCloud:";
 
 
     public void newIntelligenceProduct(AiIntelligenceProduct aiIntelligenceProduct) {
-        if (null != baseMapper.selectOne(Wrappers.<AiIntelligenceProduct>lambdaQuery().eq(AiIntelligenceProduct::getTitle, aiIntelligenceProduct.getTitle()))){
-            throw new BusinessException(500,"存在重复标题");
+        if (null != baseMapper.selectOne(Wrappers.<AiIntelligenceProduct>lambdaQuery().eq(AiIntelligenceProduct::getTitle, aiIntelligenceProduct.getTitle()))) {
+            throw new BusinessException(500, "存在重复标题");
         }
         baseMapper.insert(aiIntelligenceProduct);
     }
@@ -90,90 +94,99 @@ public class AiIntelligenceService extends ServiceImpl<AiIntelligenceProductMapp
         return baseMapper.getIntelligenceProductPage(new Page<>(pageNo, pageSize), searchSb, sortSb);
     }
 
-    public String getIntelligenceWordCloud(Boolean refresh){
-        if (refresh){
+    public String getIntelligenceWordCloud(Boolean refresh) {
+        if (refresh) {
             return refreshIntelligenceWordCloud();
-        }else {
+        } else {
             String result = stringRedisTemplate.opsForValue().get(REDIS_KEY);
-            if (StringUtils.isEmpty(result)){
+            if (StringUtils.isEmpty(result)) {
                 return refreshIntelligenceWordCloud();
-            }else {
+            } else {
                 return result;
             }
         }
     }
 
-    private String refreshIntelligenceWordCloud(){
+    private String refreshIntelligenceWordCloud() {
         List<String> wordList = new ArrayList<>();
         int i = 1;
-        while (true){
+        while (true) {
             List<AiIntelligenceProduct> intelligenceProduct = baseMapper.getIntelligenceProductPage(new Page<>(i++, 1000), null, null).getRecords();
-            if (CollectionUtil.isEmpty(intelligenceProduct)){
+            if (CollectionUtil.isEmpty(intelligenceProduct)) {
                 break;
             }
             wordList.addAll(intelligenceProduct.stream().map(AiIntelligenceProduct::getTitle).collect(Collectors.toList()));
         }
         String result = aiModelUtils.getIntelligenceWordCloud(wordList);
         stringRedisTemplate.opsForValue().set(REDIS_KEY, result);
-        stringRedisTemplate.expire(REDIS_KEY, Duration.ofSeconds(60*60*24));
+        stringRedisTemplate.expire(REDIS_KEY, Duration.ofSeconds(60 * 60 * 24));
         return result;
     }
 
-    public String parseIntelligenceProduct(MultipartFile file){
+    public String parseIntelligenceProduct(MultipartFile file) {
         String result = aiModelUtils.parseIntelligenceProduct(file);
-        if (StringUtils.isEmpty(result)){
-            throw new BusinessException(500,"未成功识别图片");
+        if (StringUtils.isEmpty(result)) {
+            throw new BusinessException(500, "未成功识别图片");
         }
         return result;
     }
 
-    public List<RedditMilvus> question(String question, String collectionName) throws Exception {
+    public List<RedditMilvus> question(String question, String collectionName) {
         //纯向量
         List<RedditMilvus> result = new ArrayList<>();
         ConnectConfig config = ConnectConfig.builder()
-                .uri("http://121.43.145.161:19530")
+                .uri(milvusUri)
                 .build();
-        MilvusClientV2 client = new MilvusClientV2(config);
-        AiEnum topK = aiEnumMapper.selectOne(Wrappers.<AiEnum>lambdaQuery()
-                .eq(AiEnum::getType, "redditTopK"));
-        AiEnum redditScore = aiEnumMapper.selectOne(Wrappers.<AiEnum>lambdaQuery()
-                .eq(AiEnum::getType, "redditScore"));
-        Map<String, Object> searchParams = new HashMap<>();
-        searchParams.put("nprobe", 10);
-        SearchResp searchResp = client.search(io.milvus.v2.service.vector.request.SearchReq.builder()
-                .collectionName(collectionName)
-                .data(Collections.singletonList(new FloatVec(EmbeddingResourceManager.embedText(question))))
-                .annsField("vector")
-                .searchParams(searchParams)
-                .topK(Integer.parseInt(topK.getValue()))
-                .outputFields(Arrays.asList("id", "json"))
-                .build());
+        MilvusClientV2 client = null;
+        try {
+            client = new MilvusClientV2(config);
+            AiEnum topK = aiEnumMapper.selectOne(Wrappers.<AiEnum>lambdaQuery()
+                    .eq(AiEnum::getType, "redditTopK"));
+            AiEnum redditScore = aiEnumMapper.selectOne(Wrappers.<AiEnum>lambdaQuery()
+                    .eq(AiEnum::getType, "redditScore"));
+            Map<String, Object> searchParams = new HashMap<>();
+            searchParams.put("nprobe", 10);
+            SearchResp searchResp = client.search(io.milvus.v2.service.vector.request.SearchReq.builder()
+                    .collectionName(collectionName)
+                    .data(Collections.singletonList(new FloatVec(EmbeddingResourceManager.embedText(question))))
+                    .annsField("vector")
+                    .searchParams(searchParams)
+                    .topK(Integer.parseInt(topK.getValue()))
+                    .outputFields(Arrays.asList("id", "json"))
+                    .build());
 
-        if (null != searchResp && CollectionUtil.isNotEmpty(searchResp.getSearchResults())) {
-            List<List<SearchResp.SearchResult>> searchResults = searchResp.getSearchResults();
-            List<SearchResp.SearchResult> scores = searchResults.get(0);
-            // 处理最终结果
-            for (SearchResp.SearchResult score : scores) {
-                Map<String, Object> entity = score.getEntity();
-                if (score.getScore() > Double.parseDouble(redditScore.getValue())){
-                    RedditMilvus redditMilvus = JSON.toJavaObject(JSON.parseObject((String) entity.get("json")), RedditMilvus.class);
-                    redditMilvus.setId(String.valueOf(entity.get("id")));
-                    result.add(redditMilvus);
-                }else {
-                    System.out.println("结束score:" + score.getScore() + " title:"+ entity.get("title"));
-                    break;
+            if (null != searchResp && CollectionUtil.isNotEmpty(searchResp.getSearchResults())) {
+                List<List<SearchResp.SearchResult>> searchResults = searchResp.getSearchResults();
+                List<SearchResp.SearchResult> scores = searchResults.get(0);
+                // 处理最终结果
+                for (SearchResp.SearchResult score : scores) {
+                    Map<String, Object> entity = score.getEntity();
+                    if (score.getScore() > Double.parseDouble(redditScore.getValue())) {
+                        RedditMilvus redditMilvus = JSON.toJavaObject(JSON.parseObject((String) entity.get("json")), RedditMilvus.class);
+                        redditMilvus.setId(String.valueOf(entity.get("id")));
+                        result.add(redditMilvus);
+                    } else {
+                        System.out.println("结束score:" + score.getScore() + " title:" + entity.get("title"));
+                        break;
+                    }
+                }
+
+            } else {
+                System.err.println("查询向量数据库失败");
+            }
+        }catch (Exception e){
+            System.out.println("查询向量数据库失败" + e.getMessage());
+        }finally {
+            if (client != null) {
+                try {
+                    client.close();
+                } catch (Exception e) {
+                    // 记录关闭异常，但不抛出
+                    System.err.println("关闭 Milvus 客户端时发生错误: " + e.getMessage());
                 }
             }
+        }
 
-        } else {
-            System.err.println("混合查询失败");
-        }
-        try {
-            client.close();
-        } catch (Exception e) {
-            // 记录关闭异常，但不抛出
-            System.err.println("关闭 Milvus 客户端时发生错误: " + e.getMessage());
-        }
         return result;
     }
 
@@ -184,7 +197,7 @@ public class AiIntelligenceService extends ServiceImpl<AiIntelligenceProductMapp
 
     public void test() throws Exception {
         ConnectConfig config = ConnectConfig.builder()
-                .uri("http://121.43.145.161:19530")
+                .uri(milvusUri)
                 .build();
         MilvusClientV2 client = new MilvusClientV2(config);
         Boolean response = client.hasCollection(
@@ -273,9 +286,9 @@ public class AiIntelligenceService extends ServiceImpl<AiIntelligenceProductMapp
 
             JSONObject object2 = (JSONObject) content.get(1);
             List<RedditMilvus.Review> reviews = new ArrayList<>();
-            if (null != object2){
+            if (null != object2) {
                 JSONArray childrenList = object2.getJSONObject("data").getJSONArray("children");
-                if (CollectionUtil.isNotEmpty(childrenList)){
+                if (CollectionUtil.isNotEmpty(childrenList)) {
                     for (int i = 0; i < childrenList.size(); i++) {
                         RedditMilvus.Review review = new RedditMilvus.Review();
                         JSONObject child = (JSONObject) childrenList.get(i);
@@ -288,23 +301,23 @@ public class AiIntelligenceService extends ServiceImpl<AiIntelligenceProductMapp
             }
             redditMilvus.setReviewCnt(reviews.size());
             //情绪
-            if (null == biReddit.getSentiment()){
+            if (null == biReddit.getSentiment()) {
                 String sentimentResult = aiModelUtils.getTextSentiment(redditMilvus.getSelfText());
-                if (sentimentResult.contains("positive")){
+                if (sentimentResult.contains("positive")) {
                     redditMilvus.setSentiment("positive");
                     biReddit.setSentiment("positive");
-                }else if (sentimentResult.contains("neutral")){
+                } else if (sentimentResult.contains("neutral")) {
                     redditMilvus.setSentiment("neutral");
                     biReddit.setSentiment("neutral");
-                }else if (sentimentResult.contains("negative")){
+                } else if (sentimentResult.contains("negative")) {
                     redditMilvus.setSentiment("negative");
                     biReddit.setSentiment("negative");
                 }
                 biRedditMapper.updateById(biReddit);
-            }else {
+            } else {
                 redditMilvus.setSentiment(biReddit.getSentiment());
             }
-            if (null == biReddit.getReviews()){
+            if (null == biReddit.getReviews()) {
                 biReddit.setReviews(JSONObject.toJSONString(reviews));
                 biRedditMapper.updateById(biReddit);
             }
@@ -312,7 +325,7 @@ public class AiIntelligenceService extends ServiceImpl<AiIntelligenceProductMapp
             JsonObject jsonObject = new JsonObject();
             Gson gson = new Gson();
             Long id = UUIDConverter.generateSafeUUIDAsLong();
-            jsonObject.addProperty("id",id);
+            jsonObject.addProperty("id", id);
             jsonObject.addProperty("title", redditMilvus.getTitle());
             jsonObject.addProperty("text", redditMilvus.getSelfText());
             jsonObject.addProperty("reviews", JSONObject.toJSONString(reviews));
