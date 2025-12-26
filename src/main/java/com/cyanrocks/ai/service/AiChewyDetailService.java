@@ -20,15 +20,23 @@ public class AiChewyDetailService extends ServiceImpl<AiChewyDetailMapper, AiChe
     @Autowired
     private AiModelUtils aiModelUtils;
 
-    public void parseChewy(String url, String title, MultipartFile detailFile, MultipartFile ingredientInformationFile){
+    public void parseChewy(String url, String title, MultipartFile detailFile, MultipartFile ingredientInformationFile) {
         String detail = null;
-        if (null != detailFile && !detailFile.isEmpty()){
-            detail = aiModelUtils.processPageWithQwen(detailFile);
+        if (null != detailFile && !detailFile.isEmpty()) {
+            try {
+                detail = aiModelUtils.processPageWithQwen(detailFile);
+            } catch (Exception e) {
+                throw new BusinessException(500, "处理详情文件失败: " + e.getMessage());
+            }
         }
 
         String ingredientInformation = null;
-        if (null != ingredientInformationFile && !ingredientInformationFile.isEmpty()){
-            ingredientInformation = aiModelUtils.processPageWithQwen(ingredientInformationFile);
+        if (null != ingredientInformationFile && !ingredientInformationFile.isEmpty()) {
+            try {
+                ingredientInformation = aiModelUtils.processPageWithQwen(ingredientInformationFile);
+            } catch (Exception e) {
+                throw new BusinessException(500, "处理成分信息文件失败: " + e.getMessage());
+            }
         }
         AiChewyDetail record = new AiChewyDetail();
         record.setUrl(url);

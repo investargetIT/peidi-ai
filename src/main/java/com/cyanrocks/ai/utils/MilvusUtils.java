@@ -20,6 +20,7 @@ import io.milvus.v2.service.vector.request.data.FloatVec;
 import io.milvus.v2.service.vector.response.*;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.net.SocketTimeoutException;
@@ -50,6 +51,9 @@ public class MilvusUtils {
     private AiGbiTableMapper aiGbiTableMapper;
     @Autowired
     private AiGbiExplainMapper aiGbiExplainMapper;
+    
+    @Value("${milvus.uri}")
+    private String milvusUri;
 
     // 主处理流程
     public void processFileData(List<AiMilvusPdfMarkdown> inputList, String collectionName) throws Exception {
@@ -60,7 +64,7 @@ public class MilvusUtils {
             // 3. 连接Milvus
 
             ConnectConfig config = ConnectConfig.builder()
-                    .uri("http://121.43.145.161:19530")
+                    .uri(milvusUri)
                     .build();
             client = new MilvusClientV2(config);
             // 6. 创建集合
@@ -103,7 +107,7 @@ public class MilvusUtils {
             // 3. 连接Milvus
 
             ConnectConfig config = ConnectConfig.builder()
-                    .uri("http://121.43.145.161:19530")
+                    .uri(milvusUri)
                     .build();
             client = new MilvusClientV2(config);
             // 6. 创建集合
@@ -172,7 +176,7 @@ public class MilvusUtils {
             // 3. 连接Milvus
 
             ConnectConfig config = ConnectConfig.builder()
-                    .uri("http://121.43.145.161:19530")
+                    .uri(milvusUri)
                     .build();
             client = new MilvusClientV2(config);
             // 6. 创建集合
@@ -232,7 +236,7 @@ public class MilvusUtils {
 
     public void test(){
         ConnectConfig config = ConnectConfig.builder()
-                .uri("http://121.43.145.161:19530")
+                .uri(milvusUri)
                 .build();
         MilvusClientV2 client = new MilvusClientV2(config);
         QueryReq queryReq = QueryReq.builder()
@@ -266,7 +270,7 @@ public class MilvusUtils {
 
     public boolean updateMilvusPdfMarkdownById(AiMilvusPdfMarkdown req, String collection){
         ConnectConfig config = ConnectConfig.builder()
-                .uri("http://121.43.145.161:19530")
+                .uri(milvusUri)
                 .build();
         MilvusClientV2 client = new MilvusClientV2(config);
         QueryReq queryReq = QueryReq.builder()
@@ -362,7 +366,7 @@ public class MilvusUtils {
 
     public boolean updateGbiTableById(AiGbiTable req, String collection){
         ConnectConfig config = ConnectConfig.builder()
-                .uri("http://121.43.145.161:19530")
+                .uri(milvusUri)
                 .build();
         MilvusClientV2 client = new MilvusClientV2(config);
         QueryReq queryReq = QueryReq.builder()
@@ -409,7 +413,7 @@ public class MilvusUtils {
 
     public boolean updateGbiExpainById(AiGbiExplain req, String collection){
         ConnectConfig config = ConnectConfig.builder()
-                .uri("http://121.43.145.161:19530")
+                .uri(milvusUri)
                 .build();
         MilvusClientV2 client = new MilvusClientV2(config);
         QueryReq queryReq = QueryReq.builder()
@@ -450,7 +454,7 @@ public class MilvusUtils {
 
     public boolean deleteMilvusById(String milvusId, String collection){
         ConnectConfig config = ConnectConfig.builder()
-                .uri("http://121.43.145.161:19530")
+                .uri(milvusUri)
                 .build();
         MilvusClientV2 client = new MilvusClientV2(config);
         DeleteReq deleteReq = DeleteReq.builder()
@@ -475,7 +479,7 @@ public class MilvusUtils {
         Map<String, String> result = new HashMap<>();
         boolean hasReturn = false;
         ConnectConfig config = ConnectConfig.builder()
-                .uri("http://121.43.145.161:19530")
+                .uri(milvusUri)
                 .build();
         MilvusClientV2 client = new MilvusClientV2(config);
         //如果问题包含”检测报告“和"到期日",则提取到期日并且进行标量查询
@@ -693,7 +697,7 @@ public class MilvusUtils {
         String rewriteQuestion = "";
         Map<String, String> result = new HashMap<>();
         ConnectConfig config = ConnectConfig.builder()
-                .uri("http://121.43.145.161:19530")
+                .uri(milvusUri)
                 .build();
         MilvusClientV2 client = new MilvusClientV2(config);
         //  向量化问题,加上新问题
@@ -935,13 +939,13 @@ public class MilvusUtils {
     }
 
     private void generatePdfReportVectors(List<AiMilvusPdfMarkdown> records) {
+        //防止重复上传，中断请求模型操作
+        if (CollectionUtil.isNotEmpty(aiMilvusPdfMarkdownMapper.selectList(Wrappers.<AiMilvusPdfMarkdown>lambdaQuery()
+                .eq(AiMilvusPdfMarkdown::getTitle, records.get(0).getTitle())))) {
+            throw new BusinessException(500, "该文件已存在");
+        }
         for (AiMilvusPdfMarkdown record : records) {
             try {
-                //防止重复上传，中断请求模型操作
-                if (CollectionUtil.isNotEmpty(aiMilvusPdfMarkdownMapper.selectList(Wrappers.<AiMilvusPdfMarkdown>lambdaQuery()
-                        .eq(AiMilvusPdfMarkdown::getTitle, records.get(0).getTitle())))) {
-                    throw new BusinessException(500, "该文件已存在");
-                }
                 record.setVector(EmbeddingResourceManager.embedText(record.getText()));
             } catch (Exception e) {
                 System.out.println("Vector生成失败: "+e);
@@ -1059,7 +1063,7 @@ public class MilvusUtils {
                         .fieldName("spec").dataType(io.milvus.v2.common.DataType.VarChar).maxLength(255).isNullable(true).description("规格/净含量")
                         .build());
                 schema.addField(AddFieldReq.builder()
-                        .fieldName("batchNo").dataType(io.milvus.v2.common.DataType.Int32).maxLength(255).description("批次/LOT")
+                        .fieldName("batchNo").dataType(io.milvus.v2.common.DataType.Int32).description("批次/LOT")
                         .build());
                 schema.addField(AddFieldReq.builder()
                         .fieldName("metedate").dataType(io.milvus.v2.common.DataType.VarChar).maxLength(16000).isNullable(true).description("扩展元素")
