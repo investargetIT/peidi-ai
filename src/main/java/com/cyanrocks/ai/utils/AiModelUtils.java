@@ -754,7 +754,7 @@ public class AiModelUtils {
 
     public String gbiSqlReview(String question, String text, String sql) {
         final int MAX_RETRIES = 3;
-        AiModel aiModel = aiModelMapper.selectOne(Wrappers.<AiModel>lambdaQuery().eq(AiModel::getType, "callWithGbiQa").eq(AiModel::getActive, true));
+        AiModel aiModel = aiModelMapper.selectOne(Wrappers.<AiModel>lambdaQuery().eq(AiModel::getType, "gbiSqlReview").eq(AiModel::getActive, true));
         for (int attempt = 0; attempt < MAX_RETRIES; attempt++) {
             try (CloseableHttpClient httpClient = HttpClients.createDefault()) {
                 // 创建HTTP POST请求
@@ -838,7 +838,7 @@ public class AiModelUtils {
 
     public String gbiSqlRepair(String question, String text, String sql, String exception) {
         final int MAX_RETRIES = 3;
-        AiModel aiModel = aiModelMapper.selectOne(Wrappers.<AiModel>lambdaQuery().eq(AiModel::getType, "callWithGbiQa").eq(AiModel::getActive, true));
+        AiModel aiModel = aiModelMapper.selectOne(Wrappers.<AiModel>lambdaQuery().eq(AiModel::getType, "gbiSqlRepair").eq(AiModel::getActive, true));
         for (int attempt = 0; attempt < MAX_RETRIES; attempt++) {
             try (CloseableHttpClient httpClient = HttpClients.createDefault()) {
                 // 创建HTTP POST请求
@@ -1068,6 +1068,89 @@ public class AiModelUtils {
                     Thread.currentThread().interrupt();
                 }
             } catch (Exception e) {
+            }
+        }
+        return null;
+    }
+
+    public String compareProductReviews(List<String> productReview, List<String> compareProductReview){
+        final int MAX_RETRIES = 3;
+        AiModel aiModel = aiModelMapper.selectOne(Wrappers.<AiModel>lambdaQuery().eq(AiModel::getType, "compareProductReviews").eq(AiModel::getActive, true));
+        for (int attempt = 0; attempt < MAX_RETRIES; attempt++) {
+            try (CloseableHttpClient httpClient = HttpClients.createDefault()) {
+                // 创建HTTP POST请求
+                HttpPost httpPost = new HttpPost("https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation");
+                httpPost.setHeader("Authorization", "Bearer " + DASHSCOPE_API_KEY);
+                httpPost.setHeader("Content-Type", "application/json");
+
+                // 使用FastJSON构建请求体
+                JSONObject requestBody = new JSONObject();
+                requestBody.put("model", aiModel.getModelName());
+
+                JSONObject input = new JSONObject();
+                com.alibaba.fastjson.JSONArray messages = new com.alibaba.fastjson.JSONArray();
+
+                JSONObject system = new JSONObject();
+                system.put("role", "system");
+                system.put("content", aiModel.getPrompt());
+                messages.add(system);
+                JSONObject user = new JSONObject();
+                user.put("role", "user");
+                user.put("content", "我们的商品的评论是：" + String.join(";", productReview + "\n竞品的评论是：" + String.join(";", compareProductReview)));
+                messages.add(user);
+
+                input.put("messages", messages);
+                requestBody.put("input", input);
+
+                requestBody.put("parameters", JSONObject.parse(aiModel.getParams()));
+
+                // 设置请求体
+                httpPost.setEntity(new StringEntity(
+                        requestBody.toJSONString(),
+                        ContentType.APPLICATION_JSON
+                ));
+
+                // 执行请求
+                System.out.println("开始模型api" + LocalDateTime.now());
+                try (CloseableHttpResponse response = httpClient.execute(httpPost)) {
+                    System.out.println("模型api返回" + LocalDateTime.now());
+                    HttpEntity entity = response.getEntity();
+                    if (entity != null) {
+                        try (InputStream inputStream = entity.getContent()) {
+                            String responseBody = IOUtils.toString(inputStream, StandardCharsets.UTF_8);
+
+                            if (response.getStatusLine().getStatusCode() == 200) {
+                                JSONObject jsonResponse = JSONObject.parseObject(responseBody);
+                                JSONObject output = jsonResponse.getJSONObject("output");
+                                com.alibaba.fastjson.JSONArray choices = output.getJSONArray("choices");
+                                JSONObject firstChoice = choices.getJSONObject(0);
+                                JSONObject messageObj = firstChoice.getJSONObject("message");
+
+                                // 提取文本内容
+                                Object contentObj = messageObj.get("content");
+                                if (contentObj instanceof com.alibaba.fastjson.JSONArray) {
+                                    com.alibaba.fastjson.JSONArray contentArray = (JSONArray) contentObj;
+                                    for (int i = 0; i < contentArray.size(); i++) {
+                                        JSONObject item = contentArray.getJSONObject(i);
+                                        if (item.containsKey("text")) {
+                                            return item.getString("text");
+                                        }
+                                    }
+                                } else if (contentObj instanceof String) {
+                                    return (String) contentObj;
+                                }
+                                System.out.println("无法解析模型响应内容");
+                                return null;
+                            } else {
+                                System.out.println("API错误: " + responseBody +
+                                        " (状态码: " + response.getStatusLine().getStatusCode() + ")");
+                                TimeUnit.SECONDS.sleep(2);
+                            }
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                System.out.println("调用模型时发生未知错误" + e);
             }
         }
         return null;

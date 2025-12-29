@@ -49,7 +49,7 @@ public class IntelligenceController {
         return intelligenceService.getIntelligenceProductPage(pageNo, pageSize, sortStr,searchStr);
     }
 
-    @GetMapping("/product/word-cload")
+    @GetMapping("/product/word-cloud")
     @ApiOperation(value = "获取产品词云")
     @Log(value = "情报相关接口-获取产品词云")
     public String getIntelligenceWordCloud(@RequestParam(value="refresh",required=false) Boolean refresh) {
@@ -64,7 +64,7 @@ public class IntelligenceController {
 
     @GetMapping("/question")
     @ApiOperation(value = "问题")
-    public List<RedditMilvus> question(@RequestParam String question) throws Exception {
+    public List<RedditMilvus> question(@RequestParam String question) {
         return intelligenceService.question(question, "reddit");
     }
 

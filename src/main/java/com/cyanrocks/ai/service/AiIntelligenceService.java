@@ -62,6 +62,8 @@ public class AiIntelligenceService extends ServiceImpl<AiIntelligenceProductMapp
     private BiRedditMapper biRedditMapper;
     @Autowired
     private AiEnumMapper aiEnumMapper;
+    @Autowired
+    private EmbeddingResourceManager embeddingResourceManager;
 
     @Value("${milvus.uri}")
     private String milvusUri;
@@ -148,7 +150,7 @@ public class AiIntelligenceService extends ServiceImpl<AiIntelligenceProductMapp
             searchParams.put("nprobe", 10);
             SearchResp searchResp = client.search(io.milvus.v2.service.vector.request.SearchReq.builder()
                     .collectionName(collectionName)
-                    .data(Collections.singletonList(new FloatVec(EmbeddingResourceManager.embedText(question))))
+                    .data(Collections.singletonList(new FloatVec(embeddingResourceManager.embedText(question))))
                     .annsField("vector")
                     .searchParams(searchParams)
                     .topK(Integer.parseInt(topK.getValue()))
@@ -331,7 +333,7 @@ public class AiIntelligenceService extends ServiceImpl<AiIntelligenceProductMapp
             jsonObject.addProperty("reviews", JSONObject.toJSONString(reviews));
             jsonObject.addProperty("json", JSONObject.toJSONString(redditMilvus));
             jsonObject.addProperty("subreddit", redditMilvus.getSubreddit());
-            jsonObject.add("vector", gson.toJsonTree((EmbeddingResourceManager.embedText(JSONObject.toJSONString(redditMilvus)))));
+            jsonObject.add("vector", gson.toJsonTree((embeddingResourceManager.embedText(JSONObject.toJSONString(redditMilvus)))));
             data.add(jsonObject);
             biReddit.setMilvusId(id.toString());
             biRedditMapper.updateById(biReddit);
