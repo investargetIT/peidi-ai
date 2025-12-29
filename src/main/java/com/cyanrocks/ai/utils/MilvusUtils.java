@@ -51,6 +51,8 @@ public class MilvusUtils {
     private AiGbiTableMapper aiGbiTableMapper;
     @Autowired
     private AiGbiExplainMapper aiGbiExplainMapper;
+    @Autowired
+    private EmbeddingResourceManager embeddingResourceManager;
 
     @Value("${milvus.uri}")
     private String milvusUri;
@@ -137,7 +139,7 @@ public class MilvusUtils {
                 jsonObject.addProperty("field", gbiMilvus.getField());
                 jsonObject.addProperty("tableName", gbiMilvus.getTableName());
                 Gson gson = new Gson();
-                jsonObject.add("vector", gson.toJsonTree(EmbeddingResourceManager.embedText(gbiMilvus.getField())));
+                jsonObject.add("vector", gson.toJsonTree(embeddingResourceManager.embedText(gbiMilvus.getField())));
                 jsonObject.addProperty("searchSql", gbiMilvus.getSearchSql());
                 data.add(jsonObject);
                 InsertReq insertReq = InsertReq.builder()
@@ -206,7 +208,7 @@ public class MilvusUtils {
                 jsonObject.addProperty("gbiExplain", gbiMilvus.getGbiExplain());
                 jsonObject.addProperty("explainType", gbiMilvus.getExplainType());
                 Gson gson = new Gson();
-                jsonObject.add("vector", gson.toJsonTree(EmbeddingResourceManager.embedText(gbiMilvus.getGbiExplain())));
+                jsonObject.add("vector", gson.toJsonTree(embeddingResourceManager.embedText(gbiMilvus.getGbiExplain())));
                 data.add(jsonObject);
                 InsertReq insertReq = InsertReq.builder()
                         .collectionName(collectionName)
@@ -373,107 +375,123 @@ public class MilvusUtils {
         ConnectConfig config = ConnectConfig.builder()
                 .uri(milvusUri)
                 .build();
-        MilvusClientV2 client = new MilvusClientV2(config);
-        QueryReq queryReq = QueryReq.builder()
-                .collectionName(collection)
-                .filter("id == "+Long.valueOf(req.getMilvusId()))
-                .build();
-        // 执行标量查询
-        QueryResp queryResp = client.query(queryReq);
-        List<QueryResp.QueryResult> queryResults = queryResp.getQueryResults();
-        List<JsonObject> list = new ArrayList<>();
-        for (QueryResp.QueryResult queryResult : queryResults) {
-            Map<String, Object> entity = queryResult.getEntity();
-            Gson gson = new Gson();
-            JsonObject updateData =gson.toJsonTree(entity).getAsJsonObject();
-            if (null != req.getTableName()) {
-                updateData.addProperty("tableName", req.getTableName());
-            }
-            if (null != req.getField()) {
-                updateData.addProperty("field", req.getField());
-                updateData.add("vector", gson.toJsonTree(EmbeddingResourceManager.embedText(req.getField())));
-            }
-
-            if (null != req.getSearchSql()) {
-                updateData.addProperty("searchSql", req.getSearchSql());
-            }
-            if (null != req.getMetedate()) {
-                updateData.addProperty("metedate", req.getMetedate());
-            }
-            list.add(updateData);
-        }
-        UpsertReq updateReq = UpsertReq.builder()
-                .collectionName(collection)
-                .data(list)
-                .build();
-        UpsertResp upsertResp = client.upsert(updateReq);
+        MilvusClientV2 client = null;
         try {
-            client.close();
-        } catch (Exception e) {
-            // 记录关闭异常，但不抛出
-            System.err.println("关闭 Milvus 客户端时发生错误: " + e.getMessage());
+            client = new MilvusClientV2(config);
+            QueryReq queryReq = QueryReq.builder()
+                    .collectionName(collection)
+                    .filter("id == "+Long.valueOf(req.getMilvusId()))
+                    .build();
+            // 执行标量查询
+            QueryResp queryResp = client.query(queryReq);
+            List<QueryResp.QueryResult> queryResults = queryResp.getQueryResults();
+            List<JsonObject> list = new ArrayList<>();
+            for (QueryResp.QueryResult queryResult : queryResults) {
+                Map<String, Object> entity = queryResult.getEntity();
+                Gson gson = new Gson();
+                JsonObject updateData =gson.toJsonTree(entity).getAsJsonObject();
+                if (null != req.getTableName()) {
+                    updateData.addProperty("tableName", req.getTableName());
+                }
+                if (null != req.getField()) {
+                    updateData.addProperty("field", req.getField());
+                    updateData.add("vector", gson.toJsonTree(embeddingResourceManager.embedText(req.getField())));
+                }
+
+                if (null != req.getSearchSql()) {
+                    updateData.addProperty("searchSql", req.getSearchSql());
+                }
+                if (null != req.getMetedate()) {
+                    updateData.addProperty("metedate", req.getMetedate());
+                }
+                list.add(updateData);
+            }
+            UpsertReq updateReq = UpsertReq.builder()
+                    .collectionName(collection)
+                    .data(list)
+                    .build();
+            UpsertResp upsertResp = client.upsert(updateReq);
+
+            return upsertResp.getUpsertCnt() >0;
+        }finally {
+            if (client != null) {
+                try {
+                    client.close();
+                } catch (Exception e) {
+                    System.err.println("关闭 Milvus 客户端时发生错误: " + e.getMessage());
+                }
+            }
         }
-        return upsertResp.getUpsertCnt() >0;
     }
 
     public boolean updateGbiExpainById(AiGbiExplain req, String collection){
         ConnectConfig config = ConnectConfig.builder()
                 .uri(milvusUri)
                 .build();
-        MilvusClientV2 client = new MilvusClientV2(config);
-        QueryReq queryReq = QueryReq.builder()
-                .collectionName(collection)
-                .filter("id == "+Long.valueOf(req.getMilvusId()))
-                .build();
-        // 执行标量查询
-        QueryResp queryResp = client.query(queryReq);
-        List<QueryResp.QueryResult> queryResults = queryResp.getQueryResults();
-        List<JsonObject> list = new ArrayList<>();
-        for (QueryResp.QueryResult queryResult : queryResults) {
-            Map<String, Object> entity = queryResult.getEntity();
-            Gson gson = new Gson();
-            JsonObject updateData =gson.toJsonTree(entity).getAsJsonObject();
-            if (null != req.getGbiExplain()) {
-                updateData.addProperty("gbiExplain", req.getGbiExplain());
-                updateData.add("vector", gson.toJsonTree(EmbeddingResourceManager.embedText(req.getGbiExplain())));
-            }
-            if (null != req.getExplainType()) {
-                updateData.addProperty("explainType", req.getExplainType());
-            }
-
-            list.add(updateData);
-        }
-        UpsertReq updateReq = UpsertReq.builder()
-                .collectionName(collection)
-                .data(list)
-                .build();
-        UpsertResp upsertResp = client.upsert(updateReq);
+        MilvusClientV2 client = null;
         try {
-            client.close();
-        } catch (Exception e) {
-            // 记录关闭异常，但不抛出
-            System.err.println("关闭 Milvus 客户端时发生错误: " + e.getMessage());
+            client = new MilvusClientV2(config);
+            QueryReq queryReq = QueryReq.builder()
+                    .collectionName(collection)
+                    .filter("id == "+Long.valueOf(req.getMilvusId()))
+                    .build();
+            // 执行标量查询
+            QueryResp queryResp = client.query(queryReq);
+            List<QueryResp.QueryResult> queryResults = queryResp.getQueryResults();
+            List<JsonObject> list = new ArrayList<>();
+            for (QueryResp.QueryResult queryResult : queryResults) {
+                Map<String, Object> entity = queryResult.getEntity();
+                Gson gson = new Gson();
+                JsonObject updateData =gson.toJsonTree(entity).getAsJsonObject();
+                if (null != req.getGbiExplain()) {
+                    updateData.addProperty("gbiExplain", req.getGbiExplain());
+                    updateData.add("vector", gson.toJsonTree(embeddingResourceManager.embedText(req.getGbiExplain())));
+                }
+                if (null != req.getExplainType()) {
+                    updateData.addProperty("explainType", req.getExplainType());
+                }
+
+                list.add(updateData);
+            }
+            UpsertReq updateReq = UpsertReq.builder()
+                    .collectionName(collection)
+                    .data(list)
+                    .build();
+            UpsertResp upsertResp = client.upsert(updateReq);
+            return upsertResp.getUpsertCnt() >0;
+        }finally {
+            if (client != null) {
+                try {
+                    client.close();
+                } catch (Exception e) {
+                    System.err.println("关闭 Milvus 客户端时发生错误: " + e.getMessage());
+                }
+            }
         }
-        return upsertResp.getUpsertCnt() >0;
     }
 
     public boolean deleteMilvusById(String milvusId, String collection){
         ConnectConfig config = ConnectConfig.builder()
                 .uri(milvusUri)
                 .build();
-        MilvusClientV2 client = new MilvusClientV2(config);
-        DeleteReq deleteReq = DeleteReq.builder()
-                .collectionName(collection)
-                .ids(Collections.singletonList(Long.valueOf(milvusId)))
-                .build();
-        DeleteResp deleteResp = client.delete(deleteReq);
+        MilvusClientV2 client = null;
         try {
-            client.close();
-        } catch (Exception e) {
-            // 记录关闭异常，但不抛出
-            System.err.println("关闭 Milvus 客户端时发生错误: " + e.getMessage());
+            client = new MilvusClientV2(config);
+            DeleteReq deleteReq = DeleteReq.builder()
+                    .collectionName(collection)
+                    .ids(Collections.singletonList(Long.valueOf(milvusId)))
+                    .build();
+            DeleteResp deleteResp = client.delete(deleteReq);
+            return deleteResp.getDeleteCnt() >0;
+        }finally {
+            if (client != null) {
+                try {
+                    client.close();
+                } catch (Exception e) {
+                    System.err.println("关闭 Milvus 客户端时发生错误: " + e.getMessage());
+                }
+            }
         }
-        return deleteResp.getDeleteCnt() >0;
     }
 
     //纯向量查询
@@ -486,19 +504,54 @@ public class MilvusUtils {
         ConnectConfig config = ConnectConfig.builder()
                 .uri(milvusUri)
                 .build();
-        MilvusClientV2 client = new MilvusClientV2(config);
-        //如果问题包含”检测报告“和"到期日",则提取到期日并且进行标量查询
-        if (question.contains("检测报告") && question.contains("到期")) {
-            String reportDate = aiModelUtils.callWithGetDate(question);
-            String regex = "\\b\\d{4}-\\d{2}-\\d{2}\\b";
-            Pattern pattern = Pattern.compile(regex);
-            Matcher matcher = pattern.matcher(reportDate);
-            // 查找所有匹配项
-            while (matcher.find()) {
+        MilvusClientV2 client = null;
+        try {
+            client = new MilvusClientV2(config);
+            //如果问题包含”检测报告“和"到期日",则提取到期日并且进行标量查询
+            if (question.contains("检测报告") && question.contains("到期")) {
+                String reportDate = aiModelUtils.callWithGetDate(question);
+                String regex = "\\b\\d{4}-\\d{2}-\\d{2}\\b";
+                Pattern pattern = Pattern.compile(regex);
+                Matcher matcher = pattern.matcher(reportDate);
+                // 查找所有匹配项
+                while (matcher.find()) {
+                    QueryReq queryReq = QueryReq.builder()
+                            .collectionName(collectionName)
+                            .filter("reportDate < '" + matcher.group() + "' and reportType == '检测报告'")
+                            .outputFields(Arrays.asList("title", "source"))
+                            .build();
+                    // 执行标量查询
+                    QueryResp queryResp = client.query(queryReq);
+                    //模糊查询匹配标题成功，则直接返回
+                    if (null != queryResp && CollectionUtil.isNotEmpty(queryResp.getQueryResults())) {
+                        Set<String> sources = new HashSet<>();
+                        Set<String> titles = new HashSet<>();
+                        List<QueryResp.QueryResult> queryResults = queryResp.getQueryResults();
+                        if (CollectionUtil.isNotEmpty(queryResults)) {
+                            for (QueryResp.QueryResult queryResult : queryResults) {
+                                Map<String, Object> entity = queryResult.getEntity();
+                                sources.add((String) entity.get("source"));
+                                titles.add((String) entity.get("title"));
+                            }
+                            result.put("title", String.join(",", titles));
+                            result.put("source", String.join(",", sources));
+                            hasReturn = true;
+                        }
+                    }
+                }
+            }
+
+            if (!hasReturn) {
+                List<String> fields = aiEnumMapper.selectList(Wrappers.<AiEnum>lambdaQuery()
+                        .eq(AiEnum::getType, "scalarField")).stream().map(AiEnum::getValue).collect(Collectors.toList());
+                String query = fields.stream()
+                        .map(field -> field + " == \"" + question.replace("\"", "\\\"").replace("%", "\\%") + "\"")
+                        .reduce((a, b) -> a + " or " + b)
+                        .orElse("");
                 QueryReq queryReq = QueryReq.builder()
                         .collectionName(collectionName)
-                        .filter("reportDate < '" + matcher.group() + "' and reportType == '检测报告'")
-                        .outputFields(Arrays.asList("title", "source"))
+                        .filter(query)
+                        .outputFields(Arrays.asList("title", "source", "visibility"))
                         .build();
                 // 执行标量查询
                 QueryResp queryResp = client.query(queryReq);
@@ -509,192 +562,168 @@ public class MilvusUtils {
                     List<QueryResp.QueryResult> queryResults = queryResp.getQueryResults();
                     if (CollectionUtil.isNotEmpty(queryResults)) {
                         for (QueryResp.QueryResult queryResult : queryResults) {
-                            Map<String, Object> entity = queryResult.getEntity();
-                            sources.add((String) entity.get("source"));
-                            titles.add((String) entity.get("title"));
+                            if (null != queryResult.getEntity().get("visibility")
+                                    && ("all".equals(queryResult.getEntity().get("visibility")) || queryResult.getEntity().get("visibility").toString().contains(dingId))) {
+                                Map<String, Object> entity = queryResult.getEntity();
+                                sources.add((String) entity.get("source"));
+                                titles.add((String) entity.get("title"));
+                            }
                         }
-                        result.put("title", String.join(",", titles));
-                        result.put("source", String.join(",", sources));
+                        if (titles.isEmpty()){
+                            Set<String> newTitles = new HashSet<>();
+                            queryResults.forEach(queryResult->{
+                                String title = "无权限查看" + queryResult.getEntity().get("title");
+                                newTitles.add(title);
+                            });
+                            result.put("title", String.join(",", newTitles));
+                        }else {
+                            result.put("title", String.join(",", titles));
+                            result.put("source", String.join(",", sources));
+                        }
+
                         hasReturn = true;
                     }
                 }
             }
-        }
 
-        if (!hasReturn) {
-            List<String> fields = aiEnumMapper.selectList(Wrappers.<AiEnum>lambdaQuery()
-                    .eq(AiEnum::getType, "scalarField")).stream().map(AiEnum::getValue).collect(Collectors.toList());
-            String query = fields.stream()
-                    .map(field -> field + " == \"" + question.replace("\"", "\\\"").replace("%", "\\%") + "\"")
-                    .reduce((a, b) -> a + " or " + b)
-                    .orElse("");
-            QueryReq queryReq = QueryReq.builder()
-                    .collectionName(collectionName)
-                    .filter(query)
-                    .outputFields(Arrays.asList("title", "source", "visibility"))
-                    .build();
-            // 执行标量查询
-            QueryResp queryResp = client.query(queryReq);
-            //模糊查询匹配标题成功，则直接返回
-            if (null != queryResp && CollectionUtil.isNotEmpty(queryResp.getQueryResults())) {
-                Set<String> sources = new HashSet<>();
-                Set<String> titles = new HashSet<>();
-                List<QueryResp.QueryResult> queryResults = queryResp.getQueryResults();
-                if (CollectionUtil.isNotEmpty(queryResults)) {
-                    for (QueryResp.QueryResult queryResult : queryResults) {
-                        if (null != queryResult.getEntity().get("visibility")
-                                && ("all".equals(queryResult.getEntity().get("visibility")) || queryResult.getEntity().get("visibility").toString().contains(dingId))) {
-                            Map<String, Object> entity = queryResult.getEntity();
-                            sources.add((String) entity.get("source"));
-                            titles.add((String) entity.get("title"));
-                        }
-                    }
-                    if (titles.isEmpty()){
-                        Set<String> newTitles = new HashSet<>();
-                        queryResults.forEach(queryResult->{
-                            String title = "无权限查看" + queryResult.getEntity().get("title");
-                            newTitles.add(title);
-                        });
-                        result.put("title", String.join(",", newTitles));
-                    }else {
-                        result.put("title", String.join(",", titles));
-                        result.put("source", String.join(",", sources));
-                    }
+            if (!hasReturn) {
+                //  向量化问题,加上新问题
+                List<AiQueryHistory> historyList = aiQueryHistoryMapper.selectPage(new Page<>(1, 1),Wrappers.<AiQueryHistory>lambdaQuery()
+                        .eq(AiQueryHistory::getUserId, dingId).eq(AiQueryHistory::getSource,"问问")
+                        .orderByDesc(AiQueryHistory::getCreateAt)).getRecords();
 
-                    hasReturn = true;
-                }
-            }
-        }
-
-        if (!hasReturn) {
-            //  向量化问题,加上新问题
-            List<AiQueryHistory> historyList = aiQueryHistoryMapper.selectPage(new Page<>(1, 1),Wrappers.<AiQueryHistory>lambdaQuery()
-                    .eq(AiQueryHistory::getUserId, dingId).eq(AiQueryHistory::getSource,"问问")
-                    .orderByDesc(AiQueryHistory::getCreateAt)).getRecords();
-
-            //根据最近一条问题，重写问题
-            if (CollectionUtil.isEmpty(historyList)){
-                rewriteQuestion = question;
-            }else if (null == historyList.get(0).getRewriteQuery()){
-                if (null == historyList.get(0).getQuery()){
-                    //过滤，开启新问题
+                //根据最近一条问题，重写问题
+                if (CollectionUtil.isEmpty(historyList)){
                     rewriteQuestion = question;
-                }else {
-                    rewriteQuestion = aiModelUtils.callWithRewriteQuestion(question, historyList.get(0).getQuery());
-                }
-            }else {
-                rewriteQuestion = aiModelUtils.callWithRewriteQuestion(question, historyList.get(0).getRewriteQuery());
-            }
-            System.out.println("查询问题:" + rewriteQuestion);
-            AiEnum topK = aiEnumMapper.selectOne(Wrappers.<AiEnum>lambdaQuery()
-                    .eq(AiEnum::getType, "topK"));
-            Map<String, Object> searchParams = new HashMap<>();
-            searchParams.put("nprobe", 10);
-            SearchResp searchResp = client.search(SearchReq.builder()
-                    .collectionName(collectionName)
-                    .filter("visibility == \"all\" or visibility like \"%" + dingId + "%\"")
-                    .data(Collections.singletonList(new FloatVec(EmbeddingResourceManager.embedText(rewriteQuestion))))
-                    .annsField("vector")
-                    .searchParams(searchParams)
-                    .topK(Integer.parseInt(topK.getValue()))
-                    .outputFields(Arrays.asList("title", "source", "text"))
-                    .build());
-
-            if (null != searchResp && CollectionUtil.isNotEmpty(searchResp.getSearchResults())) {
-                List<List<SearchResp.SearchResult>> searchResults = searchResp.getSearchResults();
-                List<SearchResp.SearchResult> scores = searchResults.get(0);
-                // 处理最终结果
-                List<String> sources = new ArrayList<>();
-                List<String> titles = new ArrayList<>();
-                Map<String, StringBuilder> title2text = new HashMap<>();
-                for (SearchResp.SearchResult score : scores) {
-                    Map<String, Object> entity = score.getEntity();
-                    String source = (String) entity.get("source");
-                    if (!sources.contains(source)) {
-                        sources.add(source);
-                    }
-                    String title = (String) entity.get("title");
-                    if (!titles.contains(title)) {
-                        titles.add(title);
-                    }
-                    StringBuilder text = new StringBuilder((String) entity.get("text"));
-                    if (null == title2text.get(title)) {
-                        title2text.put(title, text);
-                    } else {
-                        title2text.put(title, title2text.get(title).append(text));
-                    }
-                }
-                //根据title获取对应文件的chunk数量
-                AiEnum fileChunk = aiEnumMapper.selectOne(Wrappers.<AiEnum>lambdaQuery()
-                        .eq(AiEnum::getType, "fileChunk"));
-                for (String title : titles) {
-                    QueryReq queryReq = QueryReq.builder()
-                            .collectionName(collectionName)
-                            .filter("title == '" + title.replace("\"", "\\\"").replace("%", "\\%") + "'")
-                            .outputFields(Arrays.asList("title", "text"))
-                            .build();
-                    QueryResp queryResp = client.query(queryReq);
-                    if (null != queryResp && CollectionUtil.isNotEmpty(queryResp.getQueryResults())) {
-                        List<QueryResp.QueryResult> queryResults = queryResp.getQueryResults();
-                        if (queryResults.size() <= Integer.parseInt(fileChunk.getValue())) {
-                            //若chunk数量小于等于fileChunk数量，整个文档都拼接上
-                            System.out.println("拼接所有文档:" + title);
-                            title2text.remove(title);
-                            StringBuilder text = new StringBuilder();
-                            for (QueryResp.QueryResult queryResult : queryResults) {
-                                text.append(queryResult.getEntity().get("text"));
-                            }
-                            title2text.put(title, text);
-                        }
-                    }
-                }
-                //将所有的title2text拼接到一起
-                StringBuilder resultText = new StringBuilder();
-                for (int i = 0; i<titles.size(); i++){
-                    resultText.append(titles.get(i)).append("：").append("\n").append(title2text.get(titles.get(i))).append("\n");
-                }
-                String modelText = "";
-                try {
-                    modelText = aiModelUtils.callWithMessage(rewriteQuestion, resultText.toString(), new ArrayList<>());
-                } catch (SocketTimeoutException e) {
-                    result.put("text", "连接超时，请稍后再试");
-                }
-                if (!"".equals(modelText)){
-                    if (modelText.contains("#参考资料#")){
-                        result.put("text", modelText.split("#参考资料#")[0]);
-                        List<Integer> ck = Arrays.stream(modelText.split("#参考资料#")[1].replaceAll("[\\[\\]]", "")
-                                .split(",")).map(String::trim).filter(s -> !s.isEmpty()).map(Integer::parseInt).collect(Collectors.toList());
-                        if (CollectionUtil.isNotEmpty(ck)){
-                            result.put("title", ck.stream().map(i -> titles.get(i - 1)).collect(Collectors.joining(",")));
-                            result.put("source", ck.stream().map(i -> sources.get(i - 1)).collect(Collectors.joining(",")));
-                        }
+                }else if (null == historyList.get(0).getRewriteQuery()){
+                    if (null == historyList.get(0).getQuery()){
+                        //过滤，开启新问题
+                        rewriteQuestion = question;
                     }else {
-                        result.put("title", String.join(",", titles));
-                        result.put("source", String.join(",", sources));
-                        result.put("text", modelText);
+                        rewriteQuestion = aiModelUtils.callWithRewriteQuestion(question, historyList.get(0).getQuery());
                     }
+                }else {
+                    rewriteQuestion = aiModelUtils.callWithRewriteQuestion(question, historyList.get(0).getRewriteQuery());
                 }
-            } else {
-                result.put("text", "查询失败，请联系系统管理员");
-                System.err.println("milvus查询失败");
+                System.out.println("查询问题:" + rewriteQuestion);
+                AiEnum topK = aiEnumMapper.selectOne(Wrappers.<AiEnum>lambdaQuery()
+                        .eq(AiEnum::getType, "topK"));
+                Map<String, Object> searchParams = new HashMap<>();
+                searchParams.put("nprobe", 10);
+                SearchResp searchResp = client.search(SearchReq.builder()
+                        .collectionName(collectionName)
+                        .filter("visibility == \"all\" or visibility like \"%" + dingId + "%\"")
+                        .data(Collections.singletonList(new FloatVec(embeddingResourceManager.embedText(rewriteQuestion))))
+                        .annsField("vector")
+                        .searchParams(searchParams)
+                        .topK(Integer.parseInt(topK.getValue()))
+                        .outputFields(Arrays.asList("title", "source", "text"))
+                        .build());
+
+                if (null != searchResp && CollectionUtil.isNotEmpty(searchResp.getSearchResults())) {
+                    List<List<SearchResp.SearchResult>> searchResults = searchResp.getSearchResults();
+                    List<SearchResp.SearchResult> scores = searchResults.get(0);
+                    // 处理最终结果
+                    List<String> sources = new ArrayList<>();
+                    List<String> titles = new ArrayList<>();
+                    Map<String, StringBuilder> title2text = new HashMap<>();
+                    for (SearchResp.SearchResult score : scores) {
+                        Map<String, Object> entity = score.getEntity();
+                        String source = (String) entity.get("source");
+                        if (!sources.contains(source)) {
+                            sources.add(source);
+                        }
+                        String title = (String) entity.get("title");
+                        if (!titles.contains(title)) {
+                            titles.add(title);
+                        }
+                        StringBuilder text = new StringBuilder((String) entity.get("text"));
+                        if (null == title2text.get(title)) {
+                            title2text.put(title, text);
+                        } else {
+                            title2text.put(title, title2text.get(title).append(text));
+                        }
+                    }
+                    //根据title获取对应文件的chunk数量
+                    AiEnum fileChunk = aiEnumMapper.selectOne(Wrappers.<AiEnum>lambdaQuery()
+                            .eq(AiEnum::getType, "fileChunk"));
+                    for (String title : titles) {
+                        QueryReq queryReq = QueryReq.builder()
+                                .collectionName(collectionName)
+                                .filter("title == '" + title.replace("\"", "\\\"").replace("%", "\\%") + "'")
+                                .outputFields(Arrays.asList("title", "text"))
+                                .build();
+                        QueryResp queryResp = client.query(queryReq);
+                        if (null != queryResp && CollectionUtil.isNotEmpty(queryResp.getQueryResults())) {
+                            List<QueryResp.QueryResult> queryResults = queryResp.getQueryResults();
+                            if (queryResults.size() <= Integer.parseInt(fileChunk.getValue())) {
+                                //若chunk数量小于等于fileChunk数量，整个文档都拼接上
+                                System.out.println("拼接所有文档:" + title);
+                                title2text.remove(title);
+                                StringBuilder text = new StringBuilder();
+                                for (QueryResp.QueryResult queryResult : queryResults) {
+                                    text.append(queryResult.getEntity().get("text"));
+                                }
+                                title2text.put(title, text);
+                            }
+                        }
+                    }
+                    //将所有的title2text拼接到一起
+                    StringBuilder resultText = new StringBuilder();
+                    for (int i = 0; i<titles.size(); i++){
+                        resultText.append(titles.get(i)).append("：").append("\n").append(title2text.get(titles.get(i))).append("\n");
+                    }
+                    String modelText = "";
+                    try {
+                        modelText = aiModelUtils.callWithMessage(rewriteQuestion, resultText.toString(), new ArrayList<>());
+                    } catch (SocketTimeoutException e) {
+                        result.put("text", "连接超时，请稍后再试");
+                    }
+                    if (!"".equals(modelText)){
+                        if (modelText.contains("#参考资料#")){
+                            result.put("text", modelText.split("#参考资料#")[0]);
+                            List<Integer> ck = Arrays.stream(modelText.split("#参考资料#")[1].replaceAll("[\\[\\]]", "")
+                                    .split(",")).map(String::trim).filter(s -> !s.isEmpty()).map(Integer::parseInt).collect(Collectors.toList());
+                            if (CollectionUtil.isNotEmpty(ck)){
+                                result.put("title", ck.stream().map(i -> titles.get(i - 1)).collect(Collectors.joining(",")));
+                                result.put("source", ck.stream().map(i -> sources.get(i - 1)).collect(Collectors.joining(",")));
+                            }
+                        }else {
+                            result.put("title", String.join(",", titles));
+                            result.put("source", String.join(",", sources));
+                            result.put("text", modelText);
+                        }
+                    }
+                } else {
+                    result.put("text", "查询失败，请联系系统管理员");
+                    System.err.println("milvus查询失败");
+                }
+            }
+            //保存记录，用于上下文对话
+            AiQueryHistory aiQueryHistory = new AiQueryHistory();
+            aiQueryHistory.setUserId(dingId);
+            aiQueryHistory.setQuery(question);
+            aiQueryHistory.setRewriteQuery(rewriteQuestion);
+            aiQueryHistory.setResult(result.get("text") == null ? result.get("title") : result.get("text"));
+            aiQueryHistory.setCreateAt(LocalDateTime.now());
+            aiQueryHistory.setSource("问问");
+            aiQueryHistoryMapper.insert(aiQueryHistory);
+            try {
+                client.close();
+            } catch (Exception e) {
+                // 记录关闭异常，但不抛出
+                System.err.println("关闭 Milvus 客户端时发生错误: " + e.getMessage());
+            }
+            return result;
+        }finally {
+            if (client != null) {
+                try {
+                    client.close();
+                } catch (Exception e) {
+                    System.err.println("关闭 Milvus 客户端时发生错误: " + e.getMessage());
+                }
             }
         }
-        //保存记录，用于上下文对话
-        AiQueryHistory aiQueryHistory = new AiQueryHistory();
-        aiQueryHistory.setUserId(dingId);
-        aiQueryHistory.setQuery(question);
-        aiQueryHistory.setRewriteQuery(rewriteQuestion);
-        aiQueryHistory.setResult(result.get("text") == null ? result.get("title") : result.get("text"));
-        aiQueryHistory.setCreateAt(LocalDateTime.now());
-        aiQueryHistory.setSource("问问");
-        aiQueryHistoryMapper.insert(aiQueryHistory);
-        try {
-            client.close();
-        } catch (Exception e) {
-            // 记录关闭异常，但不抛出
-            System.err.println("关闭 Milvus 客户端时发生错误: " + e.getMessage());
-        }
-        return result;
     }
 
     //纯向量
@@ -734,7 +763,7 @@ public class MilvusUtils {
         searchParams.put("nprobe", 10);
         SearchResp searchResp = client.search(SearchReq.builder()
                 .collectionName(collectionName)
-                .data(Collections.singletonList(new FloatVec(EmbeddingResourceManager.embedText(rewriteQuestion))))
+                .data(Collections.singletonList(new FloatVec(embeddingResourceManager.embedText(rewriteQuestion))))
                 .annsField("vector")
                 .searchParams(searchParams)
                 .topK(Integer.parseInt(topK.getValue()))
@@ -767,7 +796,7 @@ public class MilvusUtils {
         explainSearchParams.put("nprobe", 10);
         SearchResp explainSearchResp = client.search(SearchReq.builder()
                 .collectionName(explainCollectionName)
-                .data(Collections.singletonList(new FloatVec(EmbeddingResourceManager.embedText(rewriteQuestion))))
+                .data(Collections.singletonList(new FloatVec(embeddingResourceManager.embedText(rewriteQuestion))))
                 .filter("explainType == true")
                 .annsField("vector")
                 .searchParams(explainSearchParams)
@@ -963,7 +992,7 @@ public class MilvusUtils {
         }
         for (AiMilvusPdfMarkdown record : records) {
             try {
-                record.setVector(EmbeddingResourceManager.embedText(record.getText()));
+                record.setVector(embeddingResourceManager.embedText(record.getText()));
             } catch (Exception e) {
                 System.out.println("Vector生成失败: "+e);
                 System.out.println("文本长度为: "+estimateTokens(record.getText()));

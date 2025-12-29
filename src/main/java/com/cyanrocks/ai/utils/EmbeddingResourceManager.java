@@ -7,9 +7,8 @@ import ai.onnxruntime.OrtSession;
 import com.alibaba.dashscope.embeddings.*;
 import com.alibaba.dashscope.exception.NoApiKeyException;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Component;
 
-import java.nio.file.Paths;
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -18,16 +17,17 @@ import java.util.stream.Collectors;
  * @Author wjq
  * @Date 2025/6/4 15:41
  */
+@Component
 public class EmbeddingResourceManager {
 
     @Value("${dashscope.api-key}")
-    private static String DASHSCOPE_API_KEY;
+    private String dashscopeApiKey;
 
-    public static List<Float> embedText(String text) {
+    public List<Float> embedText(String text) {
         try {
             TextEmbeddingParam param = TextEmbeddingParam.builder()
                     .model("text-embedding-v4")
-                    .apiKey(DASHSCOPE_API_KEY)
+                    .apiKey(dashscopeApiKey)
                     .texts(Collections.singletonList(text))
                     .build();
 
