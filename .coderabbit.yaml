@@ -1,0 +1,16 @@
+language: "zh-CN"
+
+reviews:
+  profile: "chill"
+
+  # 文件路径过滤（包含和排除）
+  path_filters:
+    - "**/*.java"
+    - "**/*.xml"
+    - "**/*.properties"
+    - "**/*.yaml"
+    - "**/*.yml"
+    - "!**/target/**"
+    - "!**/test/**"
+    - "!**/*Test.java"
+    - "!**/generated/**"
