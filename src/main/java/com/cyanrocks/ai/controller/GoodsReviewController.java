@@ -30,9 +30,21 @@ public class GoodsReviewController {
     @GetMapping("/question")
     @ApiOperation(value = "问题")
     public GoodsReviewMilvus question(@RequestParam(value = "question") String question,
-                                            @RequestParam(value = "product") String product,
-                                            @RequestParam(value = "compareProduct",required = false) String compareProduct) {
-        return goodsReviewService.question(question, product, compareProduct, "goods_review");
+                                      @RequestParam(value = "product") String product,
+                                      @RequestParam(value = "productReviewTime",required = false) String productReviewTime,
+                                      @RequestParam(value = "compareProduct",required = false) String compareProduct,
+                                      @RequestParam(value = "compareProductReviewTime",required = false) String compareProductReviewTime) {
+        return goodsReviewService.question(question, product, productReviewTime, compareProduct, compareProductReviewTime,"goods_review");
+    }
+
+    @GetMapping("/question-pre")
+    @ApiOperation(value = "问题准备")
+    public Integer questionPre(@RequestParam(value = "question") String question,
+                                      @RequestParam(value = "product") String product,
+                                      @RequestParam(value = "productReviewTime",required = false) String productReviewTime,
+                                      @RequestParam(value = "compareProduct",required = false) String compareProduct,
+                                      @RequestParam(value = "compareProductReviewTime",required = false) String compareProductReviewTime) {
+        return goodsReviewService.questionPre(question, product, productReviewTime, compareProduct, compareProductReviewTime,"goods_review");
     }
 
     @GetMapping("/test")

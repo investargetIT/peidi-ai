@@ -4,6 +4,7 @@ import cn.hutool.core.collection.CollectionUtil;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
+import com.alibaba.fastjson.TypeReference;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
@@ -34,9 +35,11 @@ import io.milvus.v2.service.collection.request.CreateCollectionReq;
 import io.milvus.v2.service.collection.request.HasCollectionReq;
 import io.milvus.v2.service.vector.request.DeleteReq;
 import io.milvus.v2.service.vector.request.InsertReq;
+import io.milvus.v2.service.vector.request.QueryReq;
 import io.milvus.v2.service.vector.request.data.FloatVec;
 import io.milvus.v2.service.vector.response.DeleteResp;
 import io.milvus.v2.service.vector.response.InsertResp;
+import io.milvus.v2.service.vector.response.QueryResp;
 import io.milvus.v2.service.vector.response.SearchResp;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -48,6 +51,7 @@ import org.springframework.web.multipart.MultipartFile;
 import java.time.Duration;
 import java.util.*;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 /**
  * @Author wjq
@@ -66,7 +70,45 @@ public class GoodsReviewService extends ServiceImpl<BiGoodsReviewMapper, BiGoods
     @Value("${milvus.uri}")
     private String milvusUri;
 
-    public GoodsReviewMilvus question(String question, String product, String compareProduct, String collectionName) {
+    public Integer questionPre(String question, String product, String productReviewTime, String compareProduct, String compareProductReviewTime, String collectionName) {
+        Integer cost = 0;
+        //纯向量
+        ConnectConfig config = ConnectConfig.builder()
+                .uri(milvusUri)
+                .build();
+        MilvusClientV2 client = null;
+        try {
+            client = new MilvusClientV2(config);
+            StringBuilder productFilter = new StringBuilder("goodsType == \""+product.split("&&")[1]+"\" and shopName == \"" + product.split("&&")[0] + "\"");
+            if (StringUtils.isNotEmpty(productReviewTime)) {
+                productFilter.append(" and reviewDate >= \"").append(productReviewTime.split("&&")[0]).append("\" and reviewDate <= \"").append(productReviewTime.split("&&")[1]).append("\"");
+            }
+            List<List<BiGoodsReview>> queryGoodsReviewListList = this.splitList(this.questionProduct(client, String.valueOf(productFilter),collectionName,question));
+            cost += queryGoodsReviewListList.size()-1;
+            if (null != compareProduct){
+                StringBuilder compareProductFilter = new StringBuilder("goodsType == \""+compareProduct.split("&&")[1]+"\" and shopName == \"" + compareProduct.split("&&")[0] + "\"");
+                if (StringUtils.isNotEmpty(compareProductReviewTime)) {
+                    compareProductFilter.append(" and reviewDate >= \"").append(compareProductReviewTime.split("&&")[0]).append("\" and reviewDate <= \"").append(compareProductReviewTime.split("&&")[1]).append("\"");
+                }
+                List<List<BiGoodsReview>> queryCompareGoodsReviewListList = this.splitList(this.questionProduct(client, String.valueOf(compareProductFilter),collectionName,question));
+                cost += queryCompareGoodsReviewListList.size()-1;
+            }
+        }catch (Exception e){
+            System.out.println("查询向量数据库失败" + e.getMessage());
+        }finally {
+            if (client != null) {
+                try {
+                    client.close();
+                } catch (Exception e) {
+                    // 记录关闭异常，但不抛出
+                    System.err.println("关闭 Milvus 客户端时发生错误: " + e.getMessage());
+                }
+            }
+        }
+        return cost;
+    }
+
+    public GoodsReviewMilvus question(String question, String product, String productReviewTime, String compareProduct, String compareProductReviewTime, String collectionName) {
         //纯向量
         GoodsReviewMilvus result = new GoodsReviewMilvus();
         ConnectConfig config = ConnectConfig.builder()
@@ -75,9 +117,31 @@ public class GoodsReviewService extends ServiceImpl<BiGoodsReviewMapper, BiGoods
         MilvusClientV2 client = null;
         try {
             client = new MilvusClientV2(config);
-            result.setGoodsReviews(this.questionProduct(client,product.split("&&")[0],product.split("&&")[1],collectionName,question));
+            List<BiGoodsReview> goodsReviewList = new ArrayList<>();
+            StringBuilder productFilter = new StringBuilder("goodsType == \""+product.split("&&")[1]+"\" and shopName == \"" + product.split("&&")[0] + "\"");
+            if (StringUtils.isNotEmpty(productReviewTime)) {
+                productFilter.append(" and reviewDate >= \"").append(productReviewTime.split("&&")[0]).append("\" and reviewDate <= \"").append(productReviewTime.split("&&")[1]).append("\"");
+            }
+            List<List<BiGoodsReview>> queryGoodsReviewListList = this.splitList(this.questionProduct(client, String.valueOf(productFilter),collectionName,question));
+            for (int i = 0; i < queryGoodsReviewListList.size(); i++) {
+                String goodsReviews = aiModelUtils.getReviewRerank(queryGoodsReviewListList.get(i),question);
+                goodsReviewList.addAll(JSON.parseObject(goodsReviews, new TypeReference<List<BiGoodsReview>>() {}));
+            }
+            result.setGoodsReviews(goodsReviewList);
+
             if (null != compareProduct){
-                result.setCompareGoodsReviews(this.questionProduct(client,compareProduct.split("&&")[0],compareProduct.split("&&")[1],collectionName,question));
+                List<BiGoodsReview> comparegoodsReviewList = new ArrayList<>();
+                StringBuilder compareProductFilter = new StringBuilder("goodsType == \""+compareProduct.split("&&")[1]+"\" and shopName == \"" + compareProduct.split("&&")[0] + "\"");
+                if (StringUtils.isNotEmpty(compareProductReviewTime)) {
+                    compareProductFilter.append(" and reviewDate >= \"").append(compareProductReviewTime.split("&&")[0]).append("\" and reviewDate <= \"").append(compareProductReviewTime.split("&&")[1]).append("\"");
+                }
+                List<List<BiGoodsReview>> queryCompareGoodsReviewListList = this.splitList(this.questionProduct(client, String.valueOf(compareProductFilter),collectionName,question));
+                for (int i = 0; i < queryCompareGoodsReviewListList.size(); i++) {
+                    String goodsReviews = aiModelUtils.getReviewRerank(queryCompareGoodsReviewListList.get(i),question);
+                    comparegoodsReviewList.addAll(JSON.parseObject(goodsReviews, new TypeReference<List<BiGoodsReview>>() {}));
+                }
+                result.setCompareGoodsReviews(goodsReviewList);
+                result.setCompareGoodsReviews(comparegoodsReviewList);
             }
         }catch (Exception e){
             System.out.println("查询向量数据库失败" + e.getMessage());
@@ -111,17 +175,60 @@ public class GoodsReviewService extends ServiceImpl<BiGoodsReviewMapper, BiGoods
         return result;
     }
 
-    private List<BiGoodsReview> questionProduct(MilvusClientV2 client, String shopName, String goodsType, String collectionName, String question){
+
+    public List<List<BiGoodsReview>> splitList(List<BiGoodsReview> list) {
+        AiEnum topK = aiEnumMapper.selectOne(Wrappers.<AiEnum>lambdaQuery()
+                .eq(AiEnum::getType, "goodsReviewSplitLength"));
+        if (list == null || list.isEmpty()) {
+            return new ArrayList<>();
+        }
+        List<List<BiGoodsReview>> result = new ArrayList<>();
+        List<BiGoodsReview> currentBatch = new ArrayList<>();
+
+        for (BiGoodsReview item : list) {
+            // 临时加入当前批次
+            currentBatch.add(item);
+
+            // 序列化当前批次 JSON
+            String json = JSON.toJSONString(currentBatch);
+            int currentLength = json.length();
+
+            // 如果超过限制，回退当前项，提交上一批
+            if (currentLength > Integer.parseInt(topK.getValue())) {
+                if (currentBatch.size() == 1) {
+                    // 单个对象就超限？强制保留（避免死循环）
+                    result.add(new ArrayList<>(currentBatch));
+                    currentBatch.clear();
+                } else {
+                    // 移除刚加入的 item
+                    currentBatch.remove(currentBatch.size() - 1);
+                    // 提交当前批次
+                    result.add(new ArrayList<>(currentBatch));
+                    // 新批次从当前 item 开始
+                    currentBatch.clear();
+                    currentBatch.add(item);
+                }
+            }
+        }
+
+        // 添加最后一批（可能为空）
+        if (!currentBatch.isEmpty()) {
+            result.add(currentBatch);
+        }
+
+        return result;
+
+    }
+
+    private List<BiGoodsReview> questionProduct(MilvusClientV2 client, String filter, String collectionName, String question){
         List<BiGoodsReview> result = new ArrayList<>();
         AiEnum topK = aiEnumMapper.selectOne(Wrappers.<AiEnum>lambdaQuery()
                 .eq(AiEnum::getType, "goodsReviewTopK"));
-        AiEnum redditScore = aiEnumMapper.selectOne(Wrappers.<AiEnum>lambdaQuery()
-                .eq(AiEnum::getType, "goodsReviewScore"));
         Map<String, Object> searchParams = new HashMap<>();
         searchParams.put("nprobe", 10);
         SearchResp searchResp = client.search(io.milvus.v2.service.vector.request.SearchReq.builder()
                 .collectionName(collectionName)
-                .filter("goodsType == \""+goodsType+"\" and shopName == \"" + shopName + "\"")
+                .filter(filter)
                 .data(Collections.singletonList(new FloatVec(embeddingResourceManager.embedText(question))))
                 .annsField("vector")
                 .searchParams(searchParams)
@@ -135,13 +242,8 @@ public class GoodsReviewService extends ServiceImpl<BiGoodsReviewMapper, BiGoods
             // 处理最终结果
             for (SearchResp.SearchResult score : scores) {
                 Map<String, Object> entity = score.getEntity();
-                if (score.getScore() > Double.parseDouble(redditScore.getValue())) {
-                    BiGoodsReview biGoodsReview = JSON.toJavaObject(JSON.parseObject((String) entity.get("json")), BiGoodsReview.class);
-                    result.add(biGoodsReview);
-                } else {
-                    System.out.println("结束score:" + score.getScore());
-                    break;
-                }
+                BiGoodsReview biGoodsReview = JSON.toJavaObject(JSON.parseObject((String) entity.get("json")), BiGoodsReview.class);
+                result.add(biGoodsReview);
             }
         } else {
             System.err.println("查询向量数据库失败");
@@ -169,6 +271,10 @@ public class GoodsReviewService extends ServiceImpl<BiGoodsReviewMapper, BiGoods
                     .dataType(io.milvus.v2.common.DataType.Int64)
                     .isPrimaryKey(true)
                     .autoID(false)
+                    .build());
+            schema.addField(AddFieldReq.builder()
+                    .fieldName("id")
+                    .dataType(io.milvus.v2.common.DataType.Int64)
                     .build());
             schema.addField(AddFieldReq.builder()
                     .fieldName("channel").dataType(io.milvus.v2.common.DataType.VarChar).maxLength(50).description("渠道")

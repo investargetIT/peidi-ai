@@ -15,6 +15,6 @@ public interface BiGoodsReviewMapper extends BaseMapper<BiGoodsReview> {
             " and t2.goods_id =t1.goods_id where t2.id is null")
     List<BiGoodsReview> selectAll();
 
-    @Select("select * from bi_goods_review")
+    @Select("select * from bi_goods_review where milvus_id is null")
     List<BiGoodsReview> selectAl1l();
 }
