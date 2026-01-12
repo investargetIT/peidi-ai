@@ -12,6 +12,8 @@ import com.cyanrocks.ai.dao.mapper.AiEnumMapper;
 import com.cyanrocks.ai.dao.mapper.AiMilvusPdfMarkdownMapper;
 import com.cyanrocks.ai.dao.mapper.AiModelMapper;
 import com.cyanrocks.ai.exception.BusinessException;
+import com.cyanrocks.ai.utils.rabbitmq.PdfChunkTask;
+import com.cyanrocks.ai.utils.rabbitmq.RabbitMQConfig;
 import com.openai.client.OpenAIClient;
 import com.openai.client.okhttp.OpenAIOkHttpClient;
 import com.openai.core.http.StreamResponse;
@@ -28,7 +30,10 @@ import org.apache.pdfbox.multipdf.Splitter;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.tika.Tika;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -41,11 +46,9 @@ import java.lang.Thread;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.time.Duration;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.Base64;
-import java.util.Collections;
-import java.util.List;
+import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -76,6 +79,10 @@ public class FileToMarkdownConverter {
     private AiModelUtils aiModelUtils;
     @Autowired
     private AiEnumMapper aiEnumMapper;
+    @Autowired
+    private RabbitTemplate rabbitTemplate;
+    @Autowired
+    private StringRedisTemplate redisTemplate;
 
     public void processFile(MultipartFile file, String request, String milvusFile) {
         //防止重复上传
@@ -101,7 +108,7 @@ public class FileToMarkdownConverter {
                 List<byte[]> splitPdfs = splitPdfWithOverlap(tempFile);
                 System.out.println("文件拆分为" + splitPdfs.size() + "份");
                 if (splitPdfs.size() ==1){
-                    //只有20页
+                    //只有10页
                     String fullResponse = aiModelUtils.processFile(tempFile);
                     AiMilvusPdfMarkdown pdfRequest = JSON.toJavaObject(JSON.parseObject(request), AiMilvusPdfMarkdown.class);
                     pdfRequest.setCreateAt(LocalDateTime.now());
@@ -110,28 +117,37 @@ public class FileToMarkdownConverter {
                     pdfRequest.setSource(source);
                     pdfRecordMilvusList.add(pdfRequest);
                 }else {
-                    for (int i = 0; i < splitPdfs.size(); i++){
-                        System.out.println("处理第" + (i+1) + "份");
-                        AiMilvusPdfMarkdown pdfRequest = JSON.toJavaObject(JSON.parseObject(request), AiMilvusPdfMarkdown.class);
-                        //防止重复上传，中断请求模型操作
+                    AiMilvusPdfMarkdown pdfRequest = JSON.toJavaObject(JSON.parseObject(request), AiMilvusPdfMarkdown.class);
+                    //防止重复上传，中断请求模型操作
+                    String lockKey = "pdf_upload_lock:" + pdfRequest.getTitle();
+                    // 加锁（20分钟过期，防死锁）
+                    Boolean locked = redisTemplate.opsForValue().setIfAbsent(lockKey, "1", Duration.ofMinutes(20));
+                    if (Boolean.FALSE.equals(locked)) {
+                        // 检查是否已有数据？或直接拒绝
                         if (CollectionUtil.isNotEmpty(aiMilvusPdfMarkdownMapper.selectList(Wrappers.<AiMilvusPdfMarkdown>lambdaQuery()
                                 .eq(AiMilvusPdfMarkdown::getTitle, pdfRequest.getTitle())))) {
-                            throw new BusinessException(500, "该文件已存在");
+                            throw new BusinessException(500, "文件已存在");
+                        } else {
+                            throw new BusinessException(500, "文件正在处理中，请稍后再试");
                         }
-                        Path targetPath =  Files.createTempFile("chunk" + (i+1) + "_openai_", file.getOriginalFilename());
-                        Path savedFilePath = Files.write(
-                                targetPath,
-                                splitPdfs.get(i),
-                                StandardOpenOption.CREATE,
-                                StandardOpenOption.TRUNCATE_EXISTING
-                        );
-                        String fullResponse = aiModelUtils.processFile(savedFilePath);
-                        pdfRequest.setCreateAt(LocalDateTime.now());
-                        pdfRequest.setText(fullResponse);
-                        pdfRequest.setBatchNo(i+1);
-                        pdfRequest.setSource(source);
-                        pdfRecordMilvusList.add(pdfRequest);
-                        Files.deleteIfExists(targetPath);
+                    }
+                    if (CollectionUtil.isNotEmpty(aiMilvusPdfMarkdownMapper.selectList(Wrappers.<AiMilvusPdfMarkdown>lambdaQuery()
+                            .eq(AiMilvusPdfMarkdown::getTitle, pdfRequest.getTitle())))) {
+                        throw new BusinessException(500, "该文件已存在");
+                    }
+                    // 如果没重复，发送所有分片任务到rabbitmq并发模型处理
+                    String requestId = UUID.randomUUID().toString();
+                    for (int i = 0; i < splitPdfs.size(); i++) {
+                        System.out.println("存入rabbitMQ第" + (i+1) + "份");
+
+                        PdfChunkTask task = new PdfChunkTask();
+                        task.setRequestId(requestId);
+                        task.setRequestStr(request);
+                        task.setSplitPdf(splitPdfs.get(i));
+                        task.setBatchNo(i + 1);
+                        task.setSource(source);
+                        task.setOriginalFilename(file.getOriginalFilename());
+                        rabbitTemplate.convertAndSend(RabbitMQConfig.PDF_PROCESS_QUEUE, task);
                     }
                 }
             }else {
@@ -163,7 +179,7 @@ public class FileToMarkdownConverter {
             AiEnum chunkPageEnum = aiEnumMapper.selectOne(Wrappers.<AiEnum>lambdaQuery()
                     .eq(AiEnum::getType, "chunkPage"));
             int chunkPage = Integer.parseInt(chunkPageEnum.getValue());
-            // 1. 页数 ≤ 8，不拆分
+            // 1. 页数 ≤ 10，不拆分
             if (totalPages <= chunkPage) {
                 ByteArrayOutputStream baos = new ByteArrayOutputStream();
                 document.save(baos);
@@ -174,8 +190,8 @@ public class FileToMarkdownConverter {
             int currentStart = 1; // 1-based，用户视角的页码
 
             while (currentStart <= totalPages) {
-                // 计算当前分片的结束页（最多取20页）
-                int endPage = Math.min(currentStart + (chunkPage-1), totalPages); // 8 因为包含起始页
+                // 计算当前分片的结束页（最多取10页）
+                int endPage = Math.min(currentStart + (chunkPage-1), totalPages);
 
                 // 创建新文档，收集 [currentStart, endPage] 的页（注意：PDFBox 是 0-based）
                 PDDocument partDoc = new PDDocument();

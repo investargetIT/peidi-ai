@@ -1030,36 +1030,60 @@ public class AiModelUtils {
 
     public String processFile(Path tempFile) {
         // 将文件上传到阿里云
-        OpenAIClient client = OpenAIOkHttpClient.builder()
-                .apiKey(DASHSCOPE_API_KEY)
-                .baseUrl("https://dashscope.aliyuncs.com/compatible-mode/v1")
-                .build();
-        FileCreateParams fileParams = FileCreateParams.builder()
-                .file(tempFile)
-                .purpose(FilePurpose.of("file-extract"))
-                .build();
-        FileObject fileObject = client.files().create(fileParams);
-        AiModel aiModel = aiModelMapper.selectOne(Wrappers.<AiModel>lambdaQuery().eq(AiModel::getType, "processFile").eq(AiModel::getActive, true));
-        ChatCompletionCreateParams chatParams = ChatCompletionCreateParams.builder()
-                .addSystemMessage(aiModel.getPrompt())
-                .addSystemMessage("fileid://" + fileObject.id())
-                .addUserMessage("按要求输出")
-                .model(aiModel.getModelName())
-                .build();
         StringBuilder fullResponse = new StringBuilder();
-        try (StreamResponse<ChatCompletionChunk> streamResponse = client.chat().completions().createStreaming(chatParams)) {
-            streamResponse.stream().forEach(chunk -> {
-                String content = chunk.choices().get(0).delta().content().orElse("");
-                if (!content.isEmpty()) {
-                    fullResponse.append(content);
+        int maxRetries = 5;
+        long baseDelay = 2000;
+        for (int i = 0; i <= maxRetries; i++) {
+            try {
+                OpenAIClient client = OpenAIOkHttpClient.builder()
+                    .apiKey(DASHSCOPE_API_KEY)
+                    .baseUrl("https://dashscope.aliyuncs.com/compatible-mode/v1")
+                    .build();
+                FileCreateParams fileParams = FileCreateParams.builder()
+                        .file(tempFile)
+                        .purpose(FilePurpose.of("file-extract"))
+                        .build();
+                FileObject fileObject = client.files().create(fileParams);
+                AiModel aiModel = aiModelMapper.selectOne(Wrappers.<AiModel>lambdaQuery().eq(AiModel::getType, "processFile").eq(AiModel::getActive, true));
+                ChatCompletionCreateParams chatParams = ChatCompletionCreateParams.builder()
+                        .addSystemMessage(aiModel.getPrompt())
+                        .addSystemMessage("fileid://" + fileObject.id())
+                        .addUserMessage("按要求输出")
+                        .model(aiModel.getModelName())
+                        .build();
+                StreamResponse<ChatCompletionChunk> streamResponse = client.chat().completions().createStreaming(chatParams);
+                streamResponse.stream().forEach(chunk -> {
+                    String content = chunk.choices().get(0).delta().content().orElse("");
+                    if (!content.isEmpty()) {
+                        fullResponse.append(content);
+                    }
+                });
+                return fullResponse.toString();
+            } catch (Exception e) {
+                // 检查是否是 429 限流错误
+                if (isRateLimitError(e) && i < maxRetries) {
+                    long delay = baseDelay * (1L << i); // 指数退避：1s, 2s, 4s, 8s...
+                    System.out.println("遇到限流，" + delay + "ms 后重试 (" + (i+1) + "/" + maxRetries + ")");
+                    try {
+                        Thread.sleep(delay);
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        throw new RuntimeException("重试被中断", ie);
+                    }
+                } else {
+                    System.err.println("错误信息：" + e.getMessage());
+                    System.err.println("请参考文档：https://help.aliyun.com/zh/model-studio/developer-reference/error-code");
                 }
-            });
-
-        } catch (Exception e) {
-            System.err.println("错误信息：" + e.getMessage());
-            System.err.println("请参考文档：https://help.aliyun.com/zh/model-studio/developer-reference/error-code");
+            }
         }
         return fullResponse.toString();
+    }
+
+    private boolean isRateLimitError(Exception e) {
+        // 判断是否是阿里云 429 错误
+        return e.getMessage() != null && e.getMessage().contains("429")
+                || e.getMessage().contains("rate_limit")
+                || e.getMessage().contains("Too many requests");
     }
 
     public String processPageWithQwen(MultipartFile file){
@@ -1181,7 +1205,7 @@ public class AiModelUtils {
                 messages.add(system);
                 JSONObject user = new JSONObject();
                 user.put("role", "user");
-                user.put("content", "我们的商品的评论是：" + String.join(";", productReview + "\n竞品的评论是：" + String.join(";", compareProductReview)));
+                user.put("content", "我们的商品的评论是：" + String.join(";", productReview) + "\n竞品的评论是：" + String.join(";", compareProductReview));
                 messages.add(user);
 
                 input.put("messages", messages);
