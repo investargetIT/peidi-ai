@@ -273,10 +273,6 @@ public class GoodsReviewService extends ServiceImpl<BiGoodsReviewMapper, BiGoods
                     .autoID(false)
                     .build());
             schema.addField(AddFieldReq.builder()
-                    .fieldName("id")
-                    .dataType(io.milvus.v2.common.DataType.Int64)
-                    .build());
-            schema.addField(AddFieldReq.builder()
                     .fieldName("channel").dataType(io.milvus.v2.common.DataType.VarChar).maxLength(50).description("渠道")
                     .build());
             schema.addField(AddFieldReq.builder()

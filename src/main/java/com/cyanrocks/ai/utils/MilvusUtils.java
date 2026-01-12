@@ -777,7 +777,7 @@ public class MilvusUtils {
             for (SearchResp.SearchResult score : scores) {
                 Map<String, Object> entity = score.getEntity();
                 String field = (String) entity.get("field");
-                String sql = (String) entity.get("sql");
+                String sql = (String) entity.get("searchSql");
                 String metedate = (String) entity.get("metedate");
                 JSONObject meteObject = JSONObject.parseObject(metedate);
                 Map<String, String> query2sql = new HashMap<>();
@@ -985,11 +985,6 @@ public class MilvusUtils {
     }
 
     private void generatePdfReportVectors(List<AiMilvusPdfMarkdown> records) {
-        //防止重复上传，中断请求模型操作
-        if (CollectionUtil.isNotEmpty(aiMilvusPdfMarkdownMapper.selectList(Wrappers.<AiMilvusPdfMarkdown>lambdaQuery()
-                .eq(AiMilvusPdfMarkdown::getTitle, records.get(0).getTitle())))) {
-            throw new BusinessException(500, "该文件已存在");
-        }
         for (AiMilvusPdfMarkdown record : records) {
             try {
                 record.setVector(embeddingResourceManager.embedText(record.getText()));
@@ -1249,11 +1244,6 @@ public class MilvusUtils {
     private void insertPdfDataInBatches(MilvusClientV2 client,
                                         List<AiMilvusPdfMarkdown> records,
                                         String collectionName) {
-        //防止重复上传
-        if (CollectionUtil.isNotEmpty(aiMilvusPdfMarkdownMapper.selectList(Wrappers.<AiMilvusPdfMarkdown>lambdaQuery()
-                .eq(AiMilvusPdfMarkdown::getTitle, records.get(0).getTitle())))) {
-            throw new BusinessException(500, "该文件已存在");
-        }
         int total = records.size();
         List<JsonObject> data = new ArrayList<>();
         for (int i = 0; i < total; i++) {

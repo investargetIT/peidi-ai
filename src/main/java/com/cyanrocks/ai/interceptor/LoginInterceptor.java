@@ -60,7 +60,7 @@ public class LoginInterceptor implements HandlerInterceptor {
             throw new BusinessException(ErrorCodeEnum.SESSION_INVALID.getCode(), "token 无效");
         }
         if (ErrorCodeEnum.SESSION_EXPIRED.getCode().equals(contentJson.getInt("code"))){
-            throw new BusinessException(ErrorCodeEnum.SESSION_INVALID.getCode(), "token 过期");
+            throw new BusinessException(ErrorCodeEnum.SESSION_EXPIRED.getCode(), "token 过期");
         }
         System.out.println("Pre-handle: " + request.getRequestURI());
         return true; // 返回 true 继续请求处理，返回 false 终止请求
