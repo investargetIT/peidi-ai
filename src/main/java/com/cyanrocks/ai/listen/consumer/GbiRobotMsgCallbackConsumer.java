@@ -47,8 +47,6 @@ public class GbiRobotMsgCallbackConsumer implements OpenDingTalkCallbackListener
         System.out.println(stringRedisTemplate.getExpire(redisKey));
 
         String content = request.getJSONObject("text").getString("content");
-        String openConvId = request.get("conversationId").toString();
-        String robotCode = request.get("robotCode").toString();
         System.out.println(stringRedisTemplate.opsForValue().get(redisKey));
         if (!Objects.equals(stringRedisTemplate.getExpire(redisKey1), (long) -2) && content.equals(stringRedisTemplate.opsForValue().get(redisKey1))){
             //10分钟内重复请求

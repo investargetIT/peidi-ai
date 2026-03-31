@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.cyanrocks.ai.dao.mapper.AiDrawMapper">
+    <resultMap id="AiDraw" type="com.cyanrocks.ai.dao.entity.AiDraw">
+        <id property="id" column="id"/>
+        <result property="uuid" column="uuid"/>
+        <result property="maxRetries" column="max_retries"/>
+        <result property="size" column="size"/>
+        <result property="fields" column="fields"/>
+        <result property="imgs" column="imgs"/>
+        <result property="remark" column="remark"/>
+        <result property="createAt" column="create_at"/>
+        <result property="updateAt" column="update_at"/>
+        <result property="status" column="status"/>
+    </resultMap>
+    <select id="getPage" resultMap="AiDraw">
+        select * from ai_draw
+        <if test="search != '' and search != null">
+            where ${search}
+        </if>
+        order by
+        <if test="sort != '' and sort != null">
+            ${sort},
+        </if>
+        id desc
+    </select>
+
+    <resultMap id="AiDrawMaterials" type="com.cyanrocks.ai.dao.entity.AiDrawMaterials">
+        <id property="id" column="id"/>
+        <result property="objectName" column="object_name"/>
+        <result property="type" column="type"/>
+    </resultMap>
+    <select id="getMaterialsPage" resultMap="AiDrawMaterials">
+        select * from ai_draw_materials
+        <if test="search != '' and search != null">
+            where ${search}
+        </if>
+        order by
+        <if test="sort != '' and sort != null">
+            ${sort},
+        </if>
+        id desc
+    </select>
+
+</mapper>

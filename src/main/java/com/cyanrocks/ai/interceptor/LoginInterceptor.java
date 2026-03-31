@@ -32,7 +32,7 @@ public class LoginInterceptor implements HandlerInterceptor {
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
 
         String uri = request.getRequestURI();
-        if (uri.contains("/ai/common")) {
+        if (uri.contains("/ai/common") || uri.contains("/ai/wenwen")) {
             // 在这里处理特定请求
             return true; // 继续处理请求
         }

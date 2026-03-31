@@ -38,18 +38,12 @@ public class GoodsReviewController {
     }
 
     @GetMapping("/question-pre")
-    @ApiOperation(value = "问题准备")
+    @ApiOperation(value = "问题准备预估处理时间")
     public Integer questionPre(@RequestParam(value = "question") String question,
                                       @RequestParam(value = "product") String product,
                                       @RequestParam(value = "productReviewTime",required = false) String productReviewTime,
                                       @RequestParam(value = "compareProduct",required = false) String compareProduct,
                                       @RequestParam(value = "compareProductReviewTime",required = false) String compareProductReviewTime) {
         return goodsReviewService.questionPre(question, product, productReviewTime, compareProduct, compareProductReviewTime,"goods_review");
-    }
-
-    @GetMapping("/test")
-    @ApiOperation(value = "test")
-    public void test() throws Exception {
-        goodsReviewService.test();
     }
 }

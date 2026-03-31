@@ -12,6 +12,7 @@ import org.apache.http.client.protocol.HttpClientContext;
 import org.apache.http.client.utils.URIBuilder;
 import org.apache.http.entity.StringEntity;
 import org.apache.http.impl.client.CloseableHttpClient;
+import org.apache.http.impl.client.HttpClients;
 import org.apache.http.util.EntityUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -52,6 +53,26 @@ public class HttpClientService {
             logger.info("url:" + url + ",cost:" + cost + " ms");
         }
         return result;
+    }
+
+    public byte[] doGetBytes(String url, Map<String, String> headers) {
+        // 使用 HttpClient 直接读取 InputStream → byte[]
+        try (CloseableHttpClient client = HttpClients.createDefault()) {
+            HttpGet request = new HttpGet(url);
+            if (headers != null) {
+                headers.forEach(request::addHeader);
+            }
+
+            try (CloseableHttpResponse response = client.execute(request)) {
+                HttpEntity entity = response.getEntity();
+                if (entity != null) {
+                    return EntityUtils.toByteArray(entity); // 直接返回 byte[]
+                }
+            }
+        } catch (Exception e) {
+            throw new RuntimeException("Download failed", e);
+        }
+        return new byte[0];
     }
 
     public HttpResponseContent doGet(String url, Map<String, String> headers, Map<String, String> params,

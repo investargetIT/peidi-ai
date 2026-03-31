@@ -2,8 +2,10 @@ package com.cyanrocks.ai.controller;
 
 import cn.hutool.core.util.URLUtil;
 import com.cyanrocks.ai.dao.entity.AiEnum;
+import com.cyanrocks.ai.dao.entity.BiGoodsReview;
 import com.cyanrocks.ai.service.AiChewyDetailService;
 import com.cyanrocks.ai.service.CommonSettingService;
+import com.cyanrocks.ai.service.GoodsReviewService;
 import com.cyanrocks.ai.utils.OssUtils;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
@@ -40,6 +42,9 @@ public class CommonController {
 
     @Autowired
     private OssUtils ossUtils;
+
+    @Autowired
+    private GoodsReviewService goodsReviewService;
 
     @GetMapping("/enum")
 
@@ -161,5 +166,11 @@ public class CommonController {
                              @RequestParam(value = "detail",required = false) MultipartFile detail,
                              @RequestParam(value = "ingredientInformation",required = false) MultipartFile ingredientInformation) {
         aiChewyDetailService.parseChewy(url, title, detail, ingredientInformation);
+    }
+
+    @PostMapping("/goods-review/new")
+    @ApiOperation(value = "bi_goods_review数据新增")
+    public void newGoodsReview(@RequestBody List<BiGoodsReview> goodsReviews) {
+        goodsReviewService.newGoodsReview(goodsReviews);
     }
 }

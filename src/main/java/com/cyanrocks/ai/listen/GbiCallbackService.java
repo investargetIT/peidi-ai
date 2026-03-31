@@ -1,13 +1,9 @@
 package com.cyanrocks.ai.listen;
 
-import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
-import com.cyanrocks.ai.dao.entity.AiMilvusPdfMarkdown;
 import com.cyanrocks.ai.dao.entity.AiQueryHistory;
 import com.cyanrocks.ai.dao.mapper.AiQueryHistoryMapper;
-import com.cyanrocks.ai.exception.BusinessException;
 import com.cyanrocks.ai.listen.model.CardCallbackRequest;
-import com.cyanrocks.ai.utils.AiModelUtils;
 import com.cyanrocks.ai.utils.EmbeddingResourceManager;
 import com.cyanrocks.ai.utils.MilvusUtils;
 import com.cyanrocks.ai.utils.UUIDConverter;
@@ -16,8 +12,6 @@ import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import io.milvus.v2.client.ConnectConfig;
 import io.milvus.v2.client.MilvusClientV2;
-import io.milvus.v2.service.collection.request.GetLoadStateReq;
-import io.milvus.v2.service.collection.request.HasCollectionReq;
 import io.milvus.v2.service.vector.request.InsertReq;
 import io.milvus.v2.service.vector.response.InsertResp;
 import org.apache.commons.lang3.StringUtils;
@@ -32,7 +26,7 @@ import java.util.List;
 
 
 @Component
-public class LlmCallbackService implements OpenDingTalkCallbackListener<CardCallbackRequest, JSONObject> {
+public class GbiCallbackService implements OpenDingTalkCallbackListener<CardCallbackRequest, JSONObject> {
 
     @Autowired
     private AiQueryHistoryMapper aiQueryHistoryMapper;
@@ -45,7 +39,7 @@ public class LlmCallbackService implements OpenDingTalkCallbackListener<CardCall
     @Autowired
     private MilvusUtils milvusUtils;
 
-    private static final String REDIS_KEY = "ding:llmListen:";
+    private static final String REDIS_KEY = "ding:gbiListen:";
 
     @Override
     public JSONObject execute(CardCallbackRequest request) {
@@ -57,7 +51,7 @@ public class LlmCallbackService implements OpenDingTalkCallbackListener<CardCall
             aiQueryHistory.setUserId(request.getUserId());
             aiQueryHistory.setIdType("dingId");
             aiQueryHistory.setCreateAt(LocalDateTime.now());
-            aiQueryHistory.setSource("问问");
+            aiQueryHistory.setSource("问数");
             aiQueryHistoryMapper.insert(aiQueryHistory);
 
             String redisKey = REDIS_KEY + request.getUserId();
@@ -72,7 +66,7 @@ public class LlmCallbackService implements OpenDingTalkCallbackListener<CardCall
             if ("[\"2\"]".equals(actionIds)){
                 //认可
                 aiQueryHistory.setAccept(true);
-                aiQueryHistory.setMilvusId(milvusUtils.processLlmBackMilvus(aiQueryHistory,"query_accept").toString());
+                aiQueryHistory.setMilvusId(processMilvus(aiQueryHistory,"query_accept").toString());
                 aiQueryHistoryMapper.updateById(aiQueryHistory);
             }else if ("[\"3\"]".equals(actionIds)){
                 //不认可
@@ -89,4 +83,46 @@ public class LlmCallbackService implements OpenDingTalkCallbackListener<CardCall
         return new JSONObject();
 
     }
+
+    public Long processMilvus(AiQueryHistory queryHistory, String collectionName) {
+        MilvusClientV2 client = null;
+        Long id = UUIDConverter.generateSafeUUIDAsLong();
+        try {
+            ConnectConfig config = ConnectConfig.builder()
+                    .uri(milvusUri)
+                    .build();
+            client = new MilvusClientV2(config);
+            List<JsonObject> data = new ArrayList<>();
+            JsonObject jsonObject = new JsonObject();
+            Gson gson = new Gson();
+
+            jsonObject.addProperty("id",id);
+            JSONObject record = new JSONObject();
+            record.put("query",queryHistory.getRewriteQuery());
+            record.put("result",queryHistory.getResult());
+            jsonObject.addProperty("record", JSONObject.toJSONString(record));
+            jsonObject.addProperty("source", queryHistory.getSource());
+            jsonObject.add("vector", gson.toJsonTree(embeddingResourceManager.embedText(JSONObject.toJSONString(record))));
+            data.add(jsonObject);
+            InsertReq insertReq = InsertReq.builder()
+                    .collectionName(collectionName)
+                    .data(data)
+                    .build();
+
+            InsertResp insertResp = client.insert(insertReq);
+        } catch (Exception e){
+            System.out.println("写入数据库失败" + e.getMessage());
+        }finally {
+            if (client != null) {
+                try {
+                    client.close();
+                } catch (Exception e) {
+                    // 记录关闭异常，但不抛出
+                    System.err.println("关闭 Milvus 客户端时发生错误: " + e.getMessage());
+                }
+            }
+        }
+        return id;
+    }
+
 }

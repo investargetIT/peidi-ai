@@ -47,4 +47,16 @@ public class AiQueryHistory {
     @Column(name = "source")
     @Comment("来源：问问/问数")
     private String source;
+
+    @Column(name = "accept")
+    @Comment("认可")
+    private Boolean accept;
+
+    @Column(name = "milvus_id")
+    @Comment("milvus主键id")
+    private String milvusId;
+
+    @Column(name = "accept_reason")
+    @Comment("不认可理由")
+    private String acceptReason;
 }

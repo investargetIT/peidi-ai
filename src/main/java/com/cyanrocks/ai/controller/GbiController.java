@@ -21,7 +21,7 @@ import java.util.Map;
  */
 @RestController
 @RequestMapping("/ai/gbi")
-@Api(tags = {"Gbi相关接口"})
+@Api(tags = {"问数相关接口"})
 public class GbiController {
 
     @Autowired
@@ -33,7 +33,7 @@ public class GbiController {
     private static final String gbiTableMilvusCollection = "gbi_table";
     private static final String gbiExplainMilvusCollection = "gbi_explain";
 
-    @GetMapping("/question")
+    @PostMapping("/question")
     @ApiOperation(value = "查询问题")
     public Map<String, String> gbiQuestion(@RequestParam String question) throws Exception {
         return milvusUtils.gbiSearch(question, gbiTableMilvusCollection, gbiExplainMilvusCollection,"17210074020113233");

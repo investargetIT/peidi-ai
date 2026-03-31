@@ -1,16 +1,23 @@
 package com.cyanrocks.ai.utils;
 
+import cn.hutool.core.collection.CollectionUtil;
+import cn.hutool.json.JSONUtil;
 import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.cyanrocks.ai.dao.entity.AiModel;
 import com.cyanrocks.ai.dao.entity.AiQueryHistory;
+import com.cyanrocks.ai.dao.entity.BiGoodsEvaluation;
 import com.cyanrocks.ai.dao.entity.BiGoodsReview;
 import com.cyanrocks.ai.dao.mapper.AiModelMapper;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openai.client.OpenAIClient;
 import com.openai.client.okhttp.OpenAIOkHttpClient;
 import com.openai.core.http.StreamResponse;
 import com.openai.models.*;
+import okhttp3.*;
+import okio.BufferedSource;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.http.HttpEntity;
@@ -50,6 +57,10 @@ public class AiModelUtils {
 
     @Value("${dashscope.api-key}")
     private String DASHSCOPE_API_KEY;
+    @Value("${grsai.api-key}")
+    private String apiKey;
+    @Value("${grsai.api-key-test}")
+    private String apiKeyTest;
 
     @Autowired
     private AiModelMapper aiModelMapper;
@@ -139,7 +150,7 @@ public class AiModelUtils {
         return null;
     }
 
-    public String getIntelligenceWordCloud(List<String> wordList){
+    public String getIntelligenceWordCloud(List<String> wordList) {
         final int MAX_RETRIES = 3;
         AiModel aiModel = aiModelMapper.selectOne(Wrappers.<AiModel>lambdaQuery().eq(AiModel::getType, "getIntelligenceWordCloud").eq(AiModel::getActive, true));
         for (int attempt = 0; attempt < MAX_RETRIES; attempt++) {
@@ -222,7 +233,7 @@ public class AiModelUtils {
         return null;
     }
 
-    public String getReviewRerank(List<BiGoodsReview> reviewList, String question){
+    public String getReviewRerank(List<BiGoodsReview> reviewList, String question) {
         final int MAX_RETRIES = 3;
         AiModel aiModel = aiModelMapper.selectOne(Wrappers.<AiModel>lambdaQuery().eq(AiModel::getType, "getReviewRerank").eq(AiModel::getActive, true));
         for (int attempt = 0; attempt < MAX_RETRIES; attempt++) {
@@ -306,12 +317,12 @@ public class AiModelUtils {
     }
 
 
-    public String parseIntelligenceProduct(MultipartFile file){
+    public String parseIntelligenceProduct(MultipartFile file) {
         AiModel aiModel = aiModelMapper.selectOne(Wrappers.<AiModel>lambdaQuery().eq(AiModel::getType, "parseIntelligenceProduct").eq(AiModel::getActive, true));
         BufferedImage image = imageConverter.toBufferedImage(file);
         final int MAX_RETRIES = 3;
         String base64Image = convertImageToJpegBase64(image);
-        if (StringUtils.isEmpty(base64Image)){
+        if (StringUtils.isEmpty(base64Image)) {
             return null;
         }
         for (int attempt = 0; attempt < MAX_RETRIES; attempt++) {
@@ -386,7 +397,7 @@ public class AiModelUtils {
                             }
                         }
                     }
-                }catch (Exception e){
+                } catch (Exception e) {
                     System.out.println("execute error");
                 }
             } catch (IOException e) {
@@ -409,7 +420,7 @@ public class AiModelUtils {
             try (CloseableHttpClient httpClient = HttpClients.createDefault()) {
                 RequestConfig requestConfig = RequestConfig.custom()
                         .setConnectTimeout(5000)        // 连接超时：5秒
-                        .setSocketTimeout(aiModel.getSocketTimeout())       // 读取超时（关键！）：5分钟 = 300,000 毫秒
+                        .setSocketTimeout(aiModel.getSocketTimeout())
                         .setConnectionRequestTimeout(5000) // 从连接池获取连接的超时
                         .build();
                 // 创建HTTP POST请求
@@ -429,7 +440,7 @@ public class AiModelUtils {
                 system.put("role", "system");
                 system.put("content", aiModel.getPrompt());
                 messages.add(system);
-                historyList.forEach(history->{
+                historyList.forEach(history -> {
                     JSONObject user = new JSONObject();
                     user.put("role", "user");
                     user.put("content", history.getQuery());
@@ -495,13 +506,404 @@ public class AiModelUtils {
                         }
                     }
                 }
-            }catch (SocketTimeoutException e) {
+            } catch (SocketTimeoutException e) {
                 throw e;
             } catch (Exception e) {
                 System.out.println("调用模型时发生未知错误" + e);
             }
         }
         return null;
+    }
+
+    public String callWithMessageNoMarkdown(String question, String text, List<AiQueryHistory> historyList) throws SocketTimeoutException {
+        final int MAX_RETRIES = 3;
+        AiModel aiModel = aiModelMapper.selectOne(Wrappers.<AiModel>lambdaQuery().eq(AiModel::getType, "callWithMessageNoMarkdown").eq(AiModel::getActive, true));
+        for (int attempt = 0; attempt < MAX_RETRIES; attempt++) {
+            try (CloseableHttpClient httpClient = HttpClients.createDefault()) {
+                RequestConfig requestConfig = RequestConfig.custom()
+                        .setConnectTimeout(5000)        // 连接超时：5秒
+                        .setSocketTimeout(aiModel.getSocketTimeout())
+                        .setConnectionRequestTimeout(5000) // 从连接池获取连接的超时
+                        .build();
+                // 创建HTTP POST请求
+                HttpPost httpPost = new HttpPost("https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation");
+                httpPost.setHeader("Authorization", "Bearer " + DASHSCOPE_API_KEY);
+                httpPost.setHeader("Content-Type", "application/json");
+                httpPost.setConfig(requestConfig);
+
+                // 使用FastJSON构建请求体
+                JSONObject requestBody = new JSONObject();
+                requestBody.put("model", aiModel.getModelName());
+
+                JSONObject input = new JSONObject();
+                com.alibaba.fastjson.JSONArray messages = new com.alibaba.fastjson.JSONArray();
+
+                JSONObject system = new JSONObject();
+                system.put("role", "system");
+                system.put("content", aiModel.getPrompt());
+                messages.add(system);
+                historyList.forEach(history -> {
+                    JSONObject user = new JSONObject();
+                    user.put("role", "user");
+                    user.put("content", history.getQuery());
+                    messages.add(user);
+                    JSONObject assistant = new JSONObject();
+                    assistant.put("role", "assistant");
+                    assistant.put("content", history.getResult());
+                    messages.add(assistant);
+                });
+
+                JSONObject user = new JSONObject();
+                user.put("role", "user");
+                user.put("content", "问题是" + question + "\n资料文本是" + text);
+                messages.add(user);
+
+                input.put("messages", messages);
+                requestBody.put("input", input);
+
+                requestBody.put("parameters", JSONObject.parse(aiModel.getParams()));
+
+                // 设置请求体
+                httpPost.setEntity(new StringEntity(
+                        requestBody.toJSONString(),
+                        ContentType.APPLICATION_JSON
+                ));
+
+                // 执行请求
+                System.out.println("开始模型api" + LocalDateTime.now());
+                try (CloseableHttpResponse response = httpClient.execute(httpPost)) {
+                    System.out.println("模型api返回" + LocalDateTime.now());
+                    HttpEntity entity = response.getEntity();
+                    if (entity != null) {
+                        try (InputStream inputStream = entity.getContent()) {
+                            String responseBody = IOUtils.toString(inputStream, StandardCharsets.UTF_8);
+
+                            if (response.getStatusLine().getStatusCode() == 200) {
+                                JSONObject jsonResponse = JSONObject.parseObject(responseBody);
+                                JSONObject output = jsonResponse.getJSONObject("output");
+                                com.alibaba.fastjson.JSONArray choices = output.getJSONArray("choices");
+                                JSONObject firstChoice = choices.getJSONObject(0);
+                                JSONObject messageObj = firstChoice.getJSONObject("message");
+
+                                // 提取文本内容
+                                Object contentObj = messageObj.get("content");
+                                if (contentObj instanceof com.alibaba.fastjson.JSONArray) {
+                                    com.alibaba.fastjson.JSONArray contentArray = (JSONArray) contentObj;
+                                    for (int i = 0; i < contentArray.size(); i++) {
+                                        JSONObject item = contentArray.getJSONObject(i);
+                                        if (item.containsKey("text")) {
+                                            return item.getString("text");
+                                        }
+                                    }
+                                } else if (contentObj instanceof String) {
+                                    return (String) contentObj;
+                                }
+                                System.out.println("无法解析模型响应内容");
+                                return "实在抱歉，这个问题超出我的解答范围啦，麻烦你移步项目群咨询项目辅导员，他们会及时为你答疑的～";
+                            } else {
+                                System.out.println("API错误: " + responseBody +
+                                        " (状态码: " + response.getStatusLine().getStatusCode() + ")");
+                                TimeUnit.SECONDS.sleep(2);
+                            }
+                        }
+                    }
+                }
+            } catch (SocketTimeoutException e) {
+                throw e;
+            } catch (Exception e) {
+                System.out.println("调用模型时发生未知错误" + e);
+            }
+        }
+        return "实在抱歉，这个问题超出我的解答范围啦，麻烦你移步项目群咨询项目辅导员，他们会及时为你答疑的～";
+    }
+
+
+    public String callWithMessageWithImg(String question, MultipartFile file, String text, List<AiQueryHistory> historyList) {
+        final int MAX_RETRIES = 3;
+        AiModel aiModel = aiModelMapper.selectOne(Wrappers.<AiModel>lambdaQuery().eq(AiModel::getType, "callWithMessageWithImg").eq(AiModel::getActive, true));
+        for (int attempt = 0; attempt < MAX_RETRIES; attempt++) {
+            StringBuilder parseResult = new StringBuilder();
+            try {
+                JSONObject param = new JSONObject();
+                com.alibaba.fastjson.JSONArray messages = new com.alibaba.fastjson.JSONArray();
+                JSONObject system = new JSONObject();
+                system.put("role", "system");
+                system.put("content", aiModel.getPrompt());
+                messages.add(system);
+                historyList.forEach(history -> {
+                    JSONObject user = new JSONObject();
+                    user.put("role", "user");
+                    user.put("content", history.getQuery());
+                    messages.add(user);
+                    JSONObject assistant = new JSONObject();
+                    assistant.put("role", "assistant");
+                    assistant.put("content", history.getResult());
+                    messages.add(assistant);
+                });
+                // 多模态
+                JSONArray contentArray = new JSONArray();
+                String textPrompt = "问题是：" + question + "\n资料文本是：" + text + "\n\n（以下图片是问题的补充说明，请结合图片内容回答）";
+                contentArray.add(new JSONObject().fluentPut("type", "text").fluentPut("text", textPrompt));
+                if (file != null && !file.isEmpty()) {
+                    String base64Image = Base64.getEncoder().encodeToString(file.getBytes());
+                    String mimeType = file.getContentType();
+                    if (mimeType == null) mimeType = "image/jpeg";
+
+                    JSONObject imageUrlObj = new JSONObject();
+                    imageUrlObj.put("url", mimeType + ";base64," + base64Image);
+                    contentArray.add(new JSONObject().fluentPut("type", "image_url").fluentPut("image_url", imageUrlObj));
+                }
+                JSONObject userMessage = new JSONObject();
+                userMessage.put("role", "user");
+                userMessage.put("content", contentArray);
+
+                messages.add(userMessage);
+                param.put("messages", messages);
+                param.put("model", aiModel.getModelName());
+                param.put("stream", true);
+
+                Request request = new Request.Builder()
+                        .url("https://grsaiapi.com/v1/chat/completions")
+                        .post(RequestBody.create(JSONObject.toJSONString(param), MediaType.get("application/json; charset=utf-8")))
+                        .addHeader("Authorization", "Bearer " + apiKeyTest)
+                        .addHeader("Content-Type", "application/json")
+                        .build();
+                OkHttpClient client = new OkHttpClient.Builder()
+                        .connectTimeout(600, TimeUnit.SECONDS)
+                        .writeTimeout(600, TimeUnit.SECONDS)
+                        .readTimeout(600, TimeUnit.SECONDS)
+                        .build();
+                try (Response response = client.newCall(request).execute()) {
+                    if (!response.isSuccessful()) {
+                        throw new IOException("HTTP error! status: " + response.code());
+                    }
+
+                    ResponseBody body = response.body();
+                    if (body == null) {
+                        throw new IOException("Empty response body");
+                    }
+
+                    try (ResponseBody responseBody = body) {
+                        BufferedSource source = responseBody.source();
+                        while (!source.exhausted()) {
+                            String line = source.readUtf8Line();
+                            if (line == null) continue;
+
+                            if (line.startsWith("data: ")) {
+                                String dataStr = line.substring(6).trim();
+                                if (!dataStr.isEmpty()) {
+                                    try {
+                                        ObjectMapper objectMapper = new ObjectMapper();
+                                        JsonNode data = objectMapper.readTree(dataStr);
+                                        JsonNode results = data.path("choices");
+                                        if (results.isArray()) {
+                                            for (JsonNode result : results) {
+                                                String content = result.path("delta").path("content").asText(null);
+                                                if (!"null".equals(content) && StringUtils.isNotEmpty(content)) {
+                                                    parseResult.append(content);
+                                                }
+                                            }
+                                        }
+                                    } catch (Exception e) {
+                                        System.out.println(line);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } catch (Exception e) {
+                    System.err.println("Attempt " + (attempt + 1) + " failed: " + e.getMessage());
+                    // 继续重试
+                } finally {
+                    client.clone();
+                }
+            } catch (Exception e) {
+                System.err.println("Unexpected error on attempt " + (attempt + 1) + ": " + e.getMessage());
+            }
+            if (StringUtils.isNotEmpty(parseResult)){
+                if (parseResult.toString().contains("<think>") && parseResult.toString().contains("</think>")){
+                    return parseResult.toString().replaceAll("(?si)<think>.*?</think>", "");
+                }
+                if (!parseResult.toString().contains("<think>")){
+                    return parseResult.toString();
+                }
+            }
+            if (attempt < MAX_RETRIES - 1) {
+                try {
+                    Thread.sleep(10_000); // 10 seconds
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+            }
+        }
+        return "请稍后再试";
+    }
+
+    public String callWithMessageWithImgNoMarkdown(String question, List<MultipartFile> files, String text, List<AiQueryHistory> historyList) {
+        System.out.println("接收到"+files.size()+"张图片");
+        final int MAX_RETRIES = 3;
+        AiModel aiModel = aiModelMapper.selectOne(Wrappers.<AiModel>lambdaQuery().eq(AiModel::getType, "callWithMessageWithImgNoMarkdown").eq(AiModel::getActive, true));
+        for (int attempt = 0; attempt < MAX_RETRIES; attempt++) {
+            StringBuilder parseResult = new StringBuilder();
+            try {
+                JSONObject param = new JSONObject();
+                com.alibaba.fastjson.JSONArray messages = new com.alibaba.fastjson.JSONArray();
+                JSONObject system = new JSONObject();
+                system.put("role", "system");
+                system.put("content", aiModel.getPrompt());
+                messages.add(system);
+                historyList.forEach(history -> {
+                    JSONObject user = new JSONObject();
+                    user.put("role", "user");
+                    user.put("content", history.getQuery());
+                    messages.add(user);
+                    JSONObject assistant = new JSONObject();
+                    assistant.put("role", "assistant");
+                    assistant.put("content", history.getResult());
+                    messages.add(assistant);
+                });
+                // 多模态消息构建
+                JSONArray contentArray = new JSONArray();
+
+                // 添加文本提示
+                String textPrompt = "问题是：" + question + "\n资料文本是：" + text + "\n\n（以下图片是问题的补充说明，请结合图片内容回答）";
+                contentArray.add(new JSONObject().fluentPut("type", "text").fluentPut("text", textPrompt));
+
+                // 遍历所有图片文件并添加到内容数组
+                if (files != null && !files.isEmpty()) {
+                    System.out.println("添加图片补充");
+                    int imgCnt = 0;
+                    for (MultipartFile file : files) {
+                        if (file == null || file.isEmpty()) {
+                            continue; // 跳过空文件
+                        }
+                        try {
+                            // 读取文件字节
+                            byte[] imageBytes = file.getBytes();
+                            if (imageBytes == null || imageBytes.length == 0) {
+                                continue;
+                            }
+                            // 获取MIME类型（安全处理）
+                            String mimeType = file.getContentType();
+                            if (mimeType == null || !mimeType.startsWith("image/")) {
+                                // 尝试从文件扩展名推断（基础容错）
+                                String filename = file.getOriginalFilename();
+                                if (filename != null && filename.toLowerCase().endsWith(".png")) {
+                                    mimeType = "image/png";
+                                } else if (filename != null && (filename.toLowerCase().endsWith(".jpg") || filename.toLowerCase().endsWith(".jpeg"))) {
+                                    mimeType = "image/jpeg";
+                                } else {
+                                    mimeType = "image/jpeg"; // 默认回退
+                                }
+                            }
+
+                            // 生成标准Base64 Data URL
+                            String base64Image = Base64.getEncoder().encodeToString(imageBytes);
+                            String dataUrl = "data:" + mimeType + ";base64," + base64Image;
+                            // 构建image_url对象
+                            JSONObject imageUrlObj = new JSONObject();
+                            imageUrlObj.put("url", dataUrl);
+                            // 添加到内容数组
+                            contentArray.add(
+                                    new JSONObject()
+                                            .fluentPut("type", "image_url")
+                                            .fluentPut("image_url", imageUrlObj)
+                            );
+                            imgCnt++;
+                        } catch (IOException e) {
+                            // 继续处理其他图片，不中断整体流程
+                        }
+                        System.out.println("添加"+imgCnt+"张照片");
+                    }
+                }
+                JSONObject userMessage = new JSONObject();
+                userMessage.put("role", "user");
+                userMessage.put("content", contentArray);
+
+                messages.add(userMessage);
+                param.put("messages", messages);
+                param.put("model", aiModel.getModelName());
+                param.put("stream", true);
+
+                Request request = new Request.Builder()
+                        .url("https://grsaiapi.com/v1/chat/completions")
+                        .post(RequestBody.create(JSONObject.toJSONString(param), MediaType.get("application/json; charset=utf-8")))
+                        .addHeader("Authorization", "Bearer " + apiKeyTest)
+                        .addHeader("Content-Type", "application/json")
+                        .build();
+                OkHttpClient client = new OkHttpClient.Builder()
+                        .connectTimeout(600, TimeUnit.SECONDS)
+                        .writeTimeout(600, TimeUnit.SECONDS)
+                        .readTimeout(600, TimeUnit.SECONDS)
+                        .build();
+                try (Response response = client.newCall(request).execute()) {
+                    if (!response.isSuccessful()) {
+                        throw new IOException("HTTP error! status: " + response.code());
+                    }
+
+                    ResponseBody body = response.body();
+                    if (body == null) {
+                        throw new IOException("Empty response body");
+                    }
+
+                    try (ResponseBody responseBody = body) {
+                        BufferedSource source = responseBody.source();
+                        while (!source.exhausted()) {
+                            String line = source.readUtf8Line();
+                            if (line == null) continue;
+
+                            if (line.startsWith("data: ")) {
+                                String dataStr = line.substring(6).trim();
+                                System.out.println("dataStr:"+dataStr);
+                                if (!dataStr.isEmpty()) {
+                                    try {
+                                        ObjectMapper objectMapper = new ObjectMapper();
+                                        JsonNode data = objectMapper.readTree(dataStr);
+                                        JsonNode results = data.path("choices");
+                                        if (results.isArray()) {
+                                            for (JsonNode result : results) {
+                                                String content = result.path("delta").path("content").asText(null);
+                                                if (!"null".equals(content) && StringUtils.isNotEmpty(content)) {
+                                                    parseResult.append(content);
+                                                }
+                                            }
+                                        }
+                                    } catch (Exception e) {
+                                        System.out.println(line);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } catch (Exception e) {
+                    System.err.println("Attempt " + (attempt + 1) + " failed: " + e.getMessage());
+                    // 继续重试
+                } finally {
+                    client.clone();
+                }
+            } catch (Exception e) {
+                System.err.println("Unexpected error on attempt " + (attempt + 1) + ": " + e.getMessage());
+            }
+            if (StringUtils.isNotEmpty(parseResult)){
+                if (parseResult.toString().contains("<think>") && parseResult.toString().contains("</think>")){
+                    return parseResult.toString().replaceAll("(?si)<think>.*?</think>", "");
+                }
+                if (!parseResult.toString().contains("<think>")){
+                    return parseResult.toString();
+                }
+            }
+            if (attempt < MAX_RETRIES - 1) {
+                try {
+                    System.out.println("请求失败，重试");
+                    Thread.sleep(10_000); // 10 seconds
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+            }
+        }
+        return "请稍后再试";
     }
 
     public String callWithGetDate(String question) {
@@ -777,7 +1179,7 @@ public class AiModelUtils {
 
                 JSONObject user = new JSONObject();
                 user.put("role", "user");
-                user.put("content", "当前问题是：" + question + "\n表、字段、字段参考基础sql和业务逻辑解释是：" + text);
+                user.put("content", "当前问题是：" + question + "\n表、字段、字段参考基础sql、表基础字段sql查询100条数据和业务逻辑解释是：" + text);
                 messages.add(user);
 
                 input.put("messages", messages);
@@ -1006,7 +1408,7 @@ public class AiModelUtils {
     }
 
     private String convertImageToJpegBase64(BufferedImage originalImage) {
-        try{
+        try {
             // 创建一个新的RGB图像（移除Alpha通道）
             BufferedImage jpegImage = new BufferedImage(
                     originalImage.getWidth(),
@@ -1022,7 +1424,7 @@ public class AiModelUtils {
             ImageIO.write(jpegImage, "jpg", baos);
             byte[] imageBytes = baos.toByteArray();
             return Base64.getEncoder().encodeToString(imageBytes);
-        }catch (Exception e){
+        } catch (Exception e) {
             System.out.println("image convert error");
         }
         return null;
@@ -1030,15 +1432,16 @@ public class AiModelUtils {
 
     public String processFile(Path tempFile) {
         // 将文件上传到阿里云
+        System.out.println("将文件上传到阿里云");
         StringBuilder fullResponse = new StringBuilder();
         int maxRetries = 5;
         long baseDelay = 2000;
-        for (int i = 0; i <= maxRetries; i++) {
+        for (int i = 0; i < maxRetries; i++) {
             try {
                 OpenAIClient client = OpenAIOkHttpClient.builder()
-                    .apiKey(DASHSCOPE_API_KEY)
-                    .baseUrl("https://dashscope.aliyuncs.com/compatible-mode/v1")
-                    .build();
+                        .apiKey(DASHSCOPE_API_KEY)
+                        .baseUrl("https://dashscope.aliyuncs.com/compatible-mode/v1")
+                        .build();
                 FileCreateParams fileParams = FileCreateParams.builder()
                         .file(tempFile)
                         .purpose(FilePurpose.of("file-extract"))
@@ -1061,9 +1464,9 @@ public class AiModelUtils {
                 return fullResponse.toString();
             } catch (Exception e) {
                 // 检查是否是 429 限流错误
-                if (isRateLimitError(e) && i < maxRetries) {
+                if (isRateLimitError(e) && i < maxRetries - 1) {
                     long delay = baseDelay * (1L << i); // 指数退避：1s, 2s, 4s, 8s...
-                    System.out.println("遇到限流，" + delay + "ms 后重试 (" + (i+1) + "/" + maxRetries + ")");
+                    System.out.println("遇到限流，" + delay + "ms 后重试 (" + (i + 1) + "/" + maxRetries + ")");
                     try {
                         Thread.sleep(delay);
                     } catch (InterruptedException ie) {
@@ -1073,25 +1476,32 @@ public class AiModelUtils {
                 } else {
                     System.err.println("错误信息：" + e.getMessage());
                     System.err.println("请参考文档：https://help.aliyun.com/zh/model-studio/developer-reference/error-code");
+                    if (i == maxRetries - 1) {
+                        throw new RuntimeException("处理文件失败，已重试" + maxRetries + "次", e);
+                    }
                 }
             }
         }
-        return fullResponse.toString();
+        throw new RuntimeException("处理文件失败，已重试" + maxRetries + "次");
     }
 
     private boolean isRateLimitError(Exception e) {
         // 判断是否是阿里云 429 错误
-        return e.getMessage() != null && e.getMessage().contains("429")
-                || e.getMessage().contains("rate_limit")
-                || e.getMessage().contains("Too many requests");
+        String message = e.getMessage();
+        if (message == null) {
+            return false;
+        }
+        return message.contains("429")
+                || message.contains("rate_limit")
+                || message.contains("Too many requests");
     }
 
-    public String processPageWithQwen(MultipartFile file){
+    public String processPageWithQwen(MultipartFile file) {
         AiModel aiModel = aiModelMapper.selectOne(Wrappers.<AiModel>lambdaQuery().eq(AiModel::getType, "processPageWithQwen").eq(AiModel::getActive, true));
         BufferedImage image = imageConverter.toBufferedImage(file);
         final int MAX_RETRIES = 3;
         String base64Image = convertImageToJpegBase64(image);
-        if (StringUtils.isEmpty(base64Image)){
+        if (StringUtils.isEmpty(base64Image)) {
             return null;
         }
         for (int attempt = 0; attempt < MAX_RETRIES; attempt++) {
@@ -1166,7 +1576,7 @@ public class AiModelUtils {
                             }
                         }
                     }
-                }catch (Exception e){
+                } catch (Exception e) {
                     System.out.println("execute error");
                 }
             } catch (IOException e) {
@@ -1182,7 +1592,7 @@ public class AiModelUtils {
         return null;
     }
 
-    public String compareProductReviews(List<String> productReview, List<String> compareProductReview){
+    public String compareProductReviews(List<String> productReview, List<String> compareProductReview) {
         final int MAX_RETRIES = 3;
         AiModel aiModel = aiModelMapper.selectOne(Wrappers.<AiModel>lambdaQuery().eq(AiModel::getType, "compareProductReviews").eq(AiModel::getActive, true));
         for (int attempt = 0; attempt < MAX_RETRIES; attempt++) {
@@ -1206,6 +1616,186 @@ public class AiModelUtils {
                 JSONObject user = new JSONObject();
                 user.put("role", "user");
                 user.put("content", "我们的商品的评论是：" + String.join(";", productReview) + "\n竞品的评论是：" + String.join(";", compareProductReview));
+                messages.add(user);
+
+                input.put("messages", messages);
+                requestBody.put("input", input);
+
+                requestBody.put("parameters", JSONObject.parse(aiModel.getParams()));
+
+                // 设置请求体
+                httpPost.setEntity(new StringEntity(
+                        requestBody.toJSONString(),
+                        ContentType.APPLICATION_JSON
+                ));
+
+                // 执行请求
+                System.out.println("开始模型api" + LocalDateTime.now());
+                try (CloseableHttpResponse response = httpClient.execute(httpPost)) {
+                    System.out.println("模型api返回" + LocalDateTime.now());
+                    HttpEntity entity = response.getEntity();
+                    if (entity != null) {
+                        try (InputStream inputStream = entity.getContent()) {
+                            String responseBody = IOUtils.toString(inputStream, StandardCharsets.UTF_8);
+
+                            if (response.getStatusLine().getStatusCode() == 200) {
+                                JSONObject jsonResponse = JSONObject.parseObject(responseBody);
+                                JSONObject output = jsonResponse.getJSONObject("output");
+                                com.alibaba.fastjson.JSONArray choices = output.getJSONArray("choices");
+                                JSONObject firstChoice = choices.getJSONObject(0);
+                                JSONObject messageObj = firstChoice.getJSONObject("message");
+
+                                // 提取文本内容
+                                Object contentObj = messageObj.get("content");
+                                if (contentObj instanceof com.alibaba.fastjson.JSONArray) {
+                                    com.alibaba.fastjson.JSONArray contentArray = (JSONArray) contentObj;
+                                    for (int i = 0; i < contentArray.size(); i++) {
+                                        JSONObject item = contentArray.getJSONObject(i);
+                                        if (item.containsKey("text")) {
+                                            return item.getString("text");
+                                        }
+                                    }
+                                } else if (contentObj instanceof String) {
+                                    return (String) contentObj;
+                                }
+                                System.out.println("无法解析模型响应内容");
+                                return null;
+                            } else {
+                                System.out.println("API错误: " + responseBody +
+                                        " (状态码: " + response.getStatusLine().getStatusCode() + ")");
+                                TimeUnit.SECONDS.sleep(2);
+                            }
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                System.out.println("调用模型时发生未知错误" + e);
+            }
+        }
+        return null;
+    }
+
+    public JSONArray getChewyParse(String text,List<String> idList) {
+        final int MAX_RETRIES = 3;
+        AiModel aiModel = aiModelMapper.selectOne(Wrappers.<AiModel>lambdaQuery().eq(AiModel::getType, "getChewyParse").eq(AiModel::getActive, true));
+        for (int attempt = 0; attempt < MAX_RETRIES; attempt++) {
+            try {
+                StringBuilder parseResult = new StringBuilder();
+                JSONObject param = new JSONObject();
+                com.alibaba.fastjson.JSONArray messages = new com.alibaba.fastjson.JSONArray();
+                JSONObject system = new JSONObject();
+                system.put("role", "system");
+                system.put("content", aiModel.getPrompt());
+                messages.add(system);
+                JSONObject user = new JSONObject();
+                user.put("role", "user");
+                user.put("content", "Input Data:" + text);
+                messages.add(user);
+                param.put("messages", messages);
+                param.put("model", aiModel.getModelName());
+                param.put("stream", true);
+
+                Request request = new Request.Builder()
+                        .url("https://grsaiapi.com/v1/chat/completions")
+                        .post(RequestBody.create(JSONObject.toJSONString(param), MediaType.get("application/json; charset=utf-8")))
+                        .addHeader("Authorization", "Bearer " + apiKey)
+                        .addHeader("Content-Type", "application/json")
+                        .build();
+                OkHttpClient client = new OkHttpClient.Builder()
+                        .connectTimeout(600, TimeUnit.SECONDS)
+                        .writeTimeout(600, TimeUnit.SECONDS)
+                        .readTimeout(600, TimeUnit.SECONDS)
+                        .build();
+                try (Response response = client.newCall(request).execute()) {
+                    if (!response.isSuccessful()) {
+                        throw new IOException("HTTP error! status: " + response.code());
+                    }
+
+                    ResponseBody body = response.body();
+                    if (body == null) {
+                        throw new IOException("Empty response body");
+                    }
+
+                    try (ResponseBody responseBody = body) {
+                        BufferedSource source = responseBody.source();
+                        while (!source.exhausted()) {
+                            String line = source.readUtf8Line();
+                            if (line == null) continue;
+
+                            if (line.startsWith("data: ")) {
+                                String dataStr = line.substring(6).trim();
+                                if (!dataStr.isEmpty()) {
+                                    try {
+                                        ObjectMapper objectMapper = new ObjectMapper();
+                                        JsonNode data = objectMapper.readTree(dataStr);
+                                        JsonNode results = data.path("choices");
+                                        if (results.isArray()) {
+                                            for (JsonNode result : results) {
+                                                String content = result.path("delta").path("content").asText(null);
+                                                if (!"null".equals(content) && StringUtils.isNotEmpty(content)) {
+                                                    parseResult.append(content);
+                                                }
+                                            }
+                                        }
+                                    } catch (Exception e) {
+                                        System.out.println("JSON 解析失败");
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    JSONArray resultArray = JSONArray.parseArray(parseResult.toString().replaceAll("(?si)<think>.*?</think>", ""));
+                    if (CollectionUtil.isNotEmpty(resultArray) && resultArray.size() == idList.size()){
+                        return resultArray;
+                    }else {
+                        System.err.println("Attempt " + (attempt + 1) + " failed: 生成数量不一致");
+                    }
+                } catch (Exception e) {
+                    System.err.println("Attempt " + (attempt + 1) + " failed: " + e.getMessage());
+                    // 继续重试
+                } finally {
+                    client.clone();
+                }
+            } catch (Exception e) {
+                System.err.println("Unexpected error on attempt " + (attempt + 1) + ": " + e.getMessage());
+            }
+
+            if (attempt < MAX_RETRIES - 1) {
+                try {
+                    Thread.sleep(10_000); // 10 seconds
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+            }
+        }
+        return null;
+    }
+
+    public String getEvaluation(BiGoodsEvaluation evaluation) {
+        final int MAX_RETRIES = 3;
+        AiModel aiModel = aiModelMapper.selectOne(Wrappers.<AiModel>lambdaQuery().eq(AiModel::getType, "getEvaluation").eq(AiModel::getActive, true));
+        for (int attempt = 0; attempt < MAX_RETRIES; attempt++) {
+            try (CloseableHttpClient httpClient = HttpClients.createDefault()) {
+                // 创建HTTP POST请求
+                HttpPost httpPost = new HttpPost("https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation");
+                httpPost.setHeader("Authorization", "Bearer " + DASHSCOPE_API_KEY);
+                httpPost.setHeader("Content-Type", "application/json");
+
+                // 使用FastJSON构建请求体
+                JSONObject requestBody = new JSONObject();
+                requestBody.put("model", aiModel.getModelName());
+
+                JSONObject input = new JSONObject();
+                com.alibaba.fastjson.JSONArray messages = new com.alibaba.fastjson.JSONArray();
+
+                JSONObject system = new JSONObject();
+                system.put("role", "system");
+                system.put("content", aiModel.getPrompt());
+                messages.add(system);
+                JSONObject user = new JSONObject();
+                user.put("role", "user");
+                user.put("content", "评论的相关信息是：" + JSONUtil.toJsonStr(evaluation));
                 messages.add(user);
 
                 input.put("messages", messages);

@@ -73,11 +73,4 @@ public class IntelligenceController {
     public List<RedditMilvus.Review> getReview(@RequestParam String id) {
         return intelligenceService.getReview(id);
     }
-
-    @GetMapping("/test")
-    @ApiOperation(value = "test")
-    public void test() throws Exception {
-        intelligenceService.test();
-    }
-
 }

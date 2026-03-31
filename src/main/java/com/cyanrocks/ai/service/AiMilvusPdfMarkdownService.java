@@ -59,32 +59,31 @@ public class AiMilvusPdfMarkdownService extends ServiceImpl<AiMilvusPdfMarkdownM
                     throw new BusinessException(500,"存在同名文件");
                 }
             });
-
-        //由于milvus不能修改，根据要修改的其中一个milvusId获取旧的title
-        AiMilvusPdfMarkdown title = baseMapper.selectOne(Wrappers.<AiMilvusPdfMarkdown>lambdaQuery()
-                .eq(AiMilvusPdfMarkdown::getMilvusId, milvusPdfMarkdown.getMilvusId()));
         //根据旧的title获取对应的所有milvusId
         List<AiMilvusPdfMarkdown> olds = baseMapper.selectList(Wrappers.<AiMilvusPdfMarkdown>lambdaQuery()
-                .eq(AiMilvusPdfMarkdown::getTitle, title.getTitle()));
-        olds.forEach(old -> {
+                .eq(AiMilvusPdfMarkdown::getTitle, milvusPdfMarkdown.getTitle()));
+        boolean hasUpdate = false;
+        for (AiMilvusPdfMarkdown old:olds){
             milvusPdfMarkdown.setMilvusId(old.getMilvusId());
-            if (milvusUtils.updateMilvusPdfMarkdownById(milvusPdfMarkdown, collection)){
-                baseMapper.update(milvusPdfMarkdown,Wrappers.<AiMilvusPdfMarkdown>lambdaQuery()
-                        .eq(AiMilvusPdfMarkdown::getMilvusId, old.getMilvusId()));
+            if (null!= milvusPdfMarkdown.getMilvusId() && milvusUtils.updateMilvusPdfMarkdownById(milvusPdfMarkdown, collection)){
+                hasUpdate = true;
             }
-        });
+        }
+        if (hasUpdate){
+            baseMapper.update(milvusPdfMarkdown,Wrappers.<AiMilvusPdfMarkdown>lambdaQuery()
+                    .eq(AiMilvusPdfMarkdown::getTitle, milvusPdfMarkdown.getTitle()));
+        }
     }
 
     public void deleteMilvusPdfMarkdown(AiMilvusPdfMarkdown milvusPdfMarkdown, String collection){
-        //由于milvus不能修改，根据要修改的其中一个milvusId获取旧的title
-        AiMilvusPdfMarkdown title = baseMapper.selectOne(Wrappers.<AiMilvusPdfMarkdown>lambdaQuery()
-                .eq(AiMilvusPdfMarkdown::getMilvusId, milvusPdfMarkdown.getMilvusId()));
         //根据旧的title获取对应的所有milvusId
         List<AiMilvusPdfMarkdown> olds = baseMapper.selectList(Wrappers.<AiMilvusPdfMarkdown>lambdaQuery()
-                .eq(AiMilvusPdfMarkdown::getTitle, title.getTitle()));
+                .eq(AiMilvusPdfMarkdown::getTitle, milvusPdfMarkdown.getTitle()));
         olds.forEach(old -> {
             milvusPdfMarkdown.setMilvusId(old.getMilvusId());
-            if (milvusUtils.deleteMilvusById(milvusPdfMarkdown.getMilvusId(), collection)){
+            if (null == milvusPdfMarkdown.getMilvusId()){
+                baseMapper.deleteById(old.getId());
+            }else if (milvusUtils.deleteMilvusById(milvusPdfMarkdown.getMilvusId(), collection)){
                 baseMapper.deleteById(old.getId());
             }
         });
