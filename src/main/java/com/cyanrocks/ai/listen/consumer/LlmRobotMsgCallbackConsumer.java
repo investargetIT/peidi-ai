@@ -69,7 +69,7 @@ public class LlmRobotMsgCallbackConsumer implements OpenDingTalkCallbackListener
             cardManager.streamCallWithCallback(content, cardParamBO, streamingFunction, updateFunction, userId);
         }  catch (Exception e) {
             stringRedisTemplate.delete(redisKey);
-            System.out.println("RobotMsgCallbackConsumer#excute  throw Exception, msg:{} "+ e.getMessage());
+            System.out.println("RobotMsgCallbackConsumer#excute  throw Exception, msg: "+ e.getMessage());
         }
         return new JSONObject();
     }

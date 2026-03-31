@@ -251,6 +251,56 @@ public class GoodsReviewService extends ServiceImpl<BiGoodsReviewMapper, BiGoods
         return result;
     }
 
+    public void newGoodsReview(List<BiGoodsReview> goodsReviews){
+        goodsReviews.forEach(record->{
+            if (StringUtils.isNotEmpty(record.getGoodsReview())){
+                BiGoodsReview exist = baseMapper.selectOne(Wrappers.<BiGoodsReview>lambdaQuery()
+                        .eq(BiGoodsReview::getReviewDate, record.getReviewDate())
+                        .eq(BiGoodsReview::getGoodsReview, record.getGoodsReview()));
+                if (null == exist){
+                    ConnectConfig config = ConnectConfig.builder()
+                            .uri(milvusUri)
+                            .build();
+                    MilvusClientV2 client = new MilvusClientV2(config);
+                    String sentimentResult = aiModelUtils.getTextSentiment(record.getGoodsReview());
+                    if (sentimentResult.contains("positive")) {
+                        record.setSentiment("positive");
+                    } else if (sentimentResult.contains("neutral")) {
+                        record.setSentiment("neutral");
+                    } else if (sentimentResult.contains("negative")) {
+                        record.setSentiment("negative");
+                    }
+                    List<JsonObject> data = new ArrayList<>();
+                    JsonObject jsonObject = new JsonObject();
+                    Gson gson = new Gson();
+                    Long id = UUIDConverter.generateSafeUUIDAsLong();
+                    jsonObject.addProperty("id", id);
+                    jsonObject.addProperty("channel", record.getChannel());
+                    jsonObject.addProperty("customerName", record.getCustomerName());
+                    jsonObject.addProperty("reviewDate", record.getReviewDate().toString());
+                    jsonObject.addProperty("goodsName", record.getGoodsName());
+                    jsonObject.addProperty("goodsId", record.getGoodsId());
+                    jsonObject.addProperty("goodsType", record.getGoodsType());
+                    jsonObject.addProperty("goodsReview", record.getGoodsReview());
+                    jsonObject.addProperty("goodsImage", record.getGoodsImage());
+                    jsonObject.addProperty("shopName", record.getShopName());
+                    jsonObject.addProperty("sentiment", record.getSentiment());
+                    jsonObject.addProperty("json", JSONObject.toJSONString(record));
+                    jsonObject.add("vector", gson.toJsonTree((embeddingResourceManager.embedText(record.getGoodsReview()))));
+                    data.add(jsonObject);
+                    record.setMilvusId(id.toString());
+                    InsertReq insertReq = InsertReq.builder()
+                            .collectionName("goods_review")
+                            .data(data)
+                            .build();
+                    InsertResp insertResp = client.insert(insertReq);
+                    baseMapper.insert(record);
+                }
+            }
+
+        });
+    }
+
     public void test() throws Exception {
         ConnectConfig config = ConnectConfig.builder()
                 .uri(milvusUri)

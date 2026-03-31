@@ -90,6 +90,14 @@ public class FileToMarkdownConverter {
                 .eq(AiMilvusPdfMarkdown::getTitle, JSON.toJavaObject(JSON.parseObject(request), AiMilvusPdfMarkdown.class).getTitle())))) {
             throw new BusinessException(500, "该文件已存在");
         }
+        //先存一份数据
+        System.out.println("先存一份数据");
+        AiMilvusPdfMarkdown initPdf = JSON.toJavaObject(JSON.parseObject(request), AiMilvusPdfMarkdown.class);
+        initPdf.setCreateAt(LocalDateTime.now());
+        initPdf.setText("");
+        initPdf.setBatchNo(0);
+        initPdf.setSource("");
+        aiMilvusPdfMarkdownMapper.insert(initPdf);
 
         try {
             InputStream is = file.getInputStream();
@@ -104,6 +112,7 @@ public class FileToMarkdownConverter {
             ossUtils.uploadToOss(source, Files.readAllBytes(tempFile));
             List<AiMilvusPdfMarkdown> pdfRecordMilvusList = new ArrayList<>();
             if (realType.equals("application/pdf")) {
+                System.out.println("文件为pdf");
                 //pdf文件进行chunk
                 List<byte[]> splitPdfs = splitPdfWithOverlap(tempFile);
                 System.out.println("文件拆分为" + splitPdfs.size() + "份");
@@ -131,8 +140,9 @@ public class FileToMarkdownConverter {
                             throw new BusinessException(500, "文件正在处理中，请稍后再试");
                         }
                     }
+                    //判断是否有初始新建文件
                     if (CollectionUtil.isNotEmpty(aiMilvusPdfMarkdownMapper.selectList(Wrappers.<AiMilvusPdfMarkdown>lambdaQuery()
-                            .eq(AiMilvusPdfMarkdown::getTitle, pdfRequest.getTitle())))) {
+                            .eq(AiMilvusPdfMarkdown::getTitle, pdfRequest.getTitle()).isNotNull(AiMilvusPdfMarkdown::getMilvusId)))) {
                         throw new BusinessException(500, "该文件已存在");
                     }
                     // 如果没重复，发送所有分片任务到rabbitmq并发模型处理
@@ -149,9 +159,13 @@ public class FileToMarkdownConverter {
                         task.setOriginalFilename(file.getOriginalFilename());
                         rabbitTemplate.convertAndSend(RabbitMQConfig.PDF_PROCESS_QUEUE, task);
                     }
+                    Files.deleteIfExists(tempFile);
+                    return; // 异步处理，直接返回
                 }
             }else {
+                System.out.println("文件为" + realType);
                 String fullResponse = aiModelUtils.processFile(tempFile);
+                System.out.println("处理阿里云返回数据");
                 AiMilvusPdfMarkdown pdfRequest = JSON.toJavaObject(JSON.parseObject(request), AiMilvusPdfMarkdown.class);
                 pdfRequest.setCreateAt(LocalDateTime.now());
                 pdfRequest.setText(fullResponse);

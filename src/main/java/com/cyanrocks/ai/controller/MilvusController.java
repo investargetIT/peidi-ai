@@ -38,16 +38,11 @@ public class MilvusController {
 
     private static final String milvusCollection = "pdf_markdown";
 
-    @GetMapping("/pdf/question")
-    @ApiOperation(value = "问题pdf")
-    public Map<String, String> pdfQuestion(@RequestParam String question) throws Exception {
-        return milvusUtils.semanticSearch2(question, "pdf_markdown", "03365042031527679493");
-    }
-
-    @GetMapping("/test")
-    @ApiOperation(value = "test")
-    public void test() {
-        milvusUtils.test();
+    @PostMapping("/wenwen/question")
+    @ApiOperation(value = "佩蒂问问查询问题")
+    public Map<String, String> pdfQuestion(@RequestParam("question") String question,
+                                           @RequestParam(value = "file",required = false) MultipartFile file){
+        return milvusUtils.semanticSearch2(question, file, "pdf_markdown", "03365042031527679493",null);
     }
 
     @GetMapping("/page")

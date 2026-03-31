@@ -118,7 +118,18 @@ public class GbiManager {
     }
 
     public void streamCallWithCallbackNew(String query, GbiCardParamBO cardParamBO, Function<GbiCardParamBO, String> streamingFunction, Function<GbiCardParamBO, String> updateFunction, StringRedisTemplate stringRedisTemplate, String redisKey,String userId) throws Exception {
-        Map<String, String> result = milvusUtils.gbiSearch(query, "gbi_table","gbi_explain", userId);
+        Map<String, String> result = new HashMap<>();
+        try {
+            result = milvusUtils.gbiSearch(query, "gbi_table","gbi_explain", userId);
+        }catch (Exception e) {
+            cardParamBO.setContent("### 执行结果\n");
+            streamingFunction.apply(cardParamBO);
+            cardParamBO.setContent("查询失败，请联系系统管理员");
+            streamingFunction.apply(cardParamBO);
+            cardManager.finishAiCard(cardParamBO.getOutTrackId(),"");
+            System.out.println("查询失败,msg:"+e);
+            return;
+        }
         cardParamBO.setContent("### 执行过程\n");
         streamingFunction.apply(cardParamBO);
         cardParamBO.setContent("- 问题重写：" + result.get("rewriteQuery") + "\n");
@@ -130,6 +141,10 @@ public class GbiManager {
         streamingFunction.apply(cardParamBO);
         cardParamBO.setContent(result.get("result") + "\n");
         streamingFunction.apply(cardParamBO);
+        Map<String, String> cardDataCardParamMap = new HashMap<>();
+        cardDataCardParamMap.put("id",result.get("id"));
+        cardParamBO.setCardDataCardParamMap(cardDataCardParamMap);
+        updateFunction.apply(cardParamBO);
         cardManager.finishAiCard(cardParamBO.getOutTrackId(),"");
         stringRedisTemplate.opsForValue().set(redisKey, query);
     }

@@ -176,7 +176,18 @@ public class LlmCardManager {
     }
 
     public void streamCallWithCallback(String query, GbiCardParamBO cardParamBO, Function<GbiCardParamBO, String> streamingFunction, Function<GbiCardParamBO, String> updateFunction, String dingId) throws Exception {
-        Map<String, String> result = milvusUtils.semanticSearch2(query,"pdf_markdown",dingId);
+        Map<String, String> result = new HashMap<>();
+        try {
+            result = milvusUtils.semanticSearch2(query,null,"pdf_markdown",dingId,null);
+        }catch (Exception e) {
+            cardParamBO.setContent("### 执行结果\n");
+            streamingFunction.apply(cardParamBO);
+            cardParamBO.setContent("查询失败，请联系系统管理员");
+            streamingFunction.apply(cardParamBO);
+            this.finishAiCard(cardParamBO.getOutTrackId(),"");
+            System.out.println("查询失败,msg:"+e);
+            return;
+        }
         //流式输出文本结果
         cardParamBO.setContent("### 执行结果\n");
         streamingFunction.apply(cardParamBO);
@@ -207,6 +218,7 @@ public class LlmCardManager {
             }
         }
         cardDataCardParamMap.put("resources",resources.toJSONString());
+        cardDataCardParamMap.put("id",result.get("id"));
         cardParamBO.setCardDataCardParamMap(cardDataCardParamMap);
         updateFunction.apply(cardParamBO);
         this.finishAiCard(cardParamBO.getOutTrackId(),"");

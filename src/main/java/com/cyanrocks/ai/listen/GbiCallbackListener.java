@@ -10,20 +10,20 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 @Configuration
-public class LlmCallbackListener {
+public class GbiCallbackListener {
 
-    @Value("${dingtalk.llm.client-id}")
+    @Value("${dingtalk.app.client-id}")
     private String clientId;
 
-    @Value("${dingtalk.llm.client-secret}")
+    @Value("${dingtalk.app.client-secret}")
     private String clientSecret;
 
     @Bean(initMethod = "start")
-    public OpenDingTalkClient configureStreamClientLlm(@Autowired LlmCallbackService llmCallbackService) throws Exception {
+    public OpenDingTalkClient configureStreamClientGbi(@Autowired GbiCallbackService gbiCallbackService) throws Exception {
         // init stream client
         return OpenDingTalkStreamClientBuilder.custom()
                 .credential(new AuthClientCredential(clientId, clientSecret))
                 //注册机器人回调
-                .registerCallbackListener(DingTalkStreamTopics.CARD_CALLBACK_TOPIC, llmCallbackService).build();
+                .registerCallbackListener(DingTalkStreamTopics.CARD_CALLBACK_TOPIC, gbiCallbackService).build();
     }
 }

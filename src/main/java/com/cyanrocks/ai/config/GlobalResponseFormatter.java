@@ -50,6 +50,11 @@ public class GlobalResponseFormatter implements ResponseBodyAdvice<Object> {
 
     private Boolean filter(MethodParameter methodParameter) {
         Class<?> declaringClass = methodParameter.getDeclaringClass();
+        String methodName = methodParameter.getMethod().getName();
+        // 排除企业微信 URL 验证接口
+        if (declaringClass.getSimpleName().equals("WenwenControler")) {
+            return false; // 不进行统一封装
+        }
         // swagger中的所有返回不进行统一封装
         if (declaringClass.getName().contains("springfox.documentation")) {
             return false;
