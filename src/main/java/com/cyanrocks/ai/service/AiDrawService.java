@@ -54,6 +54,8 @@ public class AiDrawService extends ServiceImpl<AiDrawMapper, AiDraw> {
     private String apiKey;
     @Value("${grsai.api-key-test}")
     private String apiKeyTest;
+    @Value("${dashscope.api-key}")
+    private String dashscopeApiKey;
     @Autowired
     private OssUtils ossUtils;
     @Autowired
@@ -328,6 +330,90 @@ public class AiDrawService extends ServiceImpl<AiDrawMapper, AiDraw> {
             client.clone();
         }
         return parseResult.toString();
+    }
+
+    public String transferAliyun(String jsonParams) {
+        String submitUrl = "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation";
+        String taskQueryUrl = "https://dashscope.aliyuncs.com/api/v1/tasks/";
+        OkHttpClient client = new OkHttpClient.Builder()
+                .connectTimeout(600, TimeUnit.SECONDS)
+                .writeTimeout(600, TimeUnit.SECONDS)
+                .readTimeout(600, TimeUnit.SECONDS)
+                .build();
+        // 提交异步任务
+        Request submitRequest = new Request.Builder()
+                .url(submitUrl)
+                .post(RequestBody.create(jsonParams, JSON))
+                .addHeader("Authorization", "Bearer " + dashscopeApiKey)
+                .addHeader("Content-Type", "application/json")
+                .addHeader("X-DashScope-Async", "enable")
+                .build();
+        String taskId;
+        try (Response response = client.newCall(submitRequest).execute()) {
+            if (!response.isSuccessful()) {
+                String errBody = response.body() != null ? response.body().string() : "";
+                throw new BusinessException(500, "Aliyun submit failed: " + response.code() + " " + errBody);
+            }
+            String body = response.body().string();
+            log.info("Aliyun submit response: {}", body);
+            JsonNode root = objectMapper.readTree(body);
+            taskId = root.path("output").path("task_id").asText(null);
+            if (taskId == null || taskId.isEmpty()) {
+                throw new BusinessException(500, "No task_id in response: " + body);
+            }
+        } catch (BusinessException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new BusinessException(500, "transferAliyun submit error: " + e.getMessage());
+        }
+        // 轮询任务状态
+        for (int i = 0; i < 120; i++) {
+            try {
+                Thread.sleep(3000);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new BusinessException(500, "transferAliyun interrupted");
+            }
+            Request queryRequest = new Request.Builder()
+                    .url(taskQueryUrl + taskId)
+                    .get()
+                    .addHeader("Authorization", "Bearer " + dashscopeApiKey)
+                    .build();
+            try (Response response = client.newCall(queryRequest).execute()) {
+                if (!response.isSuccessful()) {
+                    log.warn("Aliyun task query failed: {}", response.code());
+                    continue;
+                }
+                String body = response.body().string();
+                log.info("Aliyun task {} status: {}", taskId, body);
+                JsonNode root = objectMapper.readTree(body);
+                String status = root.path("output").path("task_status").asText("");
+                if ("SUCCEEDED".equals(status)) {
+                    JsonNode choices = root.path("output").path("choices");
+                    if (choices.isArray() && choices.size() > 0) {
+                        JsonNode content = choices.get(0).path("message").path("content");
+                        if (content.isArray()) {
+                            for (JsonNode item : content) {
+                                String imageUrl = item.path("image").asText(null);
+                                if (imageUrl != null && !imageUrl.isEmpty()) {
+                                    return imageUrl;
+                                }
+                            }
+                        }
+                    }
+                    throw new BusinessException(500, "Task succeeded but no image found: " + body);
+                } else if ("FAILED".equals(status)) {
+                    String errMsg = root.path("output").path("message").asText("unknown error");
+                    throw new BusinessException(500, "Aliyun task failed: " + errMsg);
+                }
+                // PENDING / RUNNING 继续等待
+            } catch (BusinessException e) {
+                throw e;
+            } catch (Exception e) {
+                log.warn("Aliyun task query error: {}", e.getMessage());
+            }
+        }
+        throw new BusinessException(500, "Aliyun task timeout, taskId: " + taskId);
     }
 
     private List<byte[]> downloadImages(List<String> urls) throws IOException {

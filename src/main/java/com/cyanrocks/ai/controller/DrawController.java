@@ -103,4 +103,10 @@ public class DrawController {
     public String transferGemini(@RequestBody AiDraw aiDraw) throws IOException {
         return aiDrawService.transferGemini(aiDraw.getUrlParam());
     }
+
+    @PostMapping("/transfer/aliyun")
+    @ApiOperation(value = "中转阿里云百炼wan2.7-image模型")
+    public String transferAliyun(@RequestBody AiDraw aiDraw) {
+        return aiDrawService.transferAliyun(aiDraw.getUrlParam());
+    }
 }
