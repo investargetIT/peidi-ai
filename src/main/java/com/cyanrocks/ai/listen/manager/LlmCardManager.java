@@ -171,10 +171,30 @@ public class LlmCardManager {
         return null;
     }
 
+    /**
+     * Builds the DingTalk group openSpaceId for an IM robot from a conversation ID.
+     *
+     * @param openConvId the group conversation identifier
+     * @return the openSpaceId in the form "dtv1.card//IM_ROBOT.<openConvId>"
+     */
     protected String getGroupOpenSpaceId(String openConvId) {
         return "dtv1.card//IM_ROBOT." + openConvId;
     }
 
+    /**
+     * Searches for semantically relevant content, streams progressive AI-generated text to a card,
+     * updates the card's reference resources, and then finalizes the card.
+     *
+     * <p>If the semantic search fails, an execution header and an error message are streamed,
+     * the card is finalized, the exception is logged, and the method returns without updating resources.
+     *
+     * @param query           the natural-language query used for semantic search
+     * @param cardParamBO     mutable object carrying card state (content, outTrackId, and card data map)
+     * @param streamingFunction function that applies a streaming update to the card using the provided {@code cardParamBO}
+     * @param updateFunction  function that applies a card data update (e.g., resources and id) using the provided {@code cardParamBO}
+     * @param dingId          identifier forwarded to the semantic search backend
+     * @throws Exception      if a streaming or update operation invoked via {@code streamingFunction} or {@code updateFunction} throws an exception
+     */
     public void streamCallWithCallback(String query, GbiCardParamBO cardParamBO, Function<GbiCardParamBO, String> streamingFunction, Function<GbiCardParamBO, String> updateFunction, String dingId) throws Exception {
         Map<String, String> result = new HashMap<>();
         try {

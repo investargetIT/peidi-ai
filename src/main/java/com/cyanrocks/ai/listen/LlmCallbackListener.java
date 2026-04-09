@@ -18,6 +18,14 @@ public class LlmCallbackListener {
     @Value("${dingtalk.llm.client-secret}")
     private String clientSecret;
 
+    /**
+     * Configure and provide an OpenDingTalkClient that authenticates with the configured
+     * credentials and routes CARD_CALLBACK_TOPIC events to the provided callback service.
+     *
+     * @param llmCallbackService the callback handler registered for DingTalk stream card callbacks
+     * @return the configured OpenDingTalkClient instance
+     * @throws Exception if the client cannot be constructed or initialized
+     */
     @Bean(initMethod = "start")
     public OpenDingTalkClient configureStreamClientLlm(@Autowired LlmCallbackService llmCallbackService) throws Exception {
         // init stream client

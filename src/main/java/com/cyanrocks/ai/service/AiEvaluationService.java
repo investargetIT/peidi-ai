@@ -17,6 +17,13 @@ public class AiEvaluationService extends ServiceImpl<BiGoodsEvaluationMapper, Bi
     @Autowired
     private AiModelUtils aiModelUtils;
 
+    /**
+     * Generates a fresh AI evaluation for the persisted goods evaluation identified by the given object's id and updates it in the database.
+     *
+     * The method loads the existing BiGoodsEvaluation by id, replaces its `aiEvaluationContent` with the result from AiModelUtils, and persists the change.
+     *
+     * @param evaluation an object whose `id` is used to locate the persisted BiGoodsEvaluation to update
+     */
     public void newEvaluation(BiGoodsEvaluation evaluation) {
         BiGoodsEvaluation biGoodsEvaluation = baseMapper.selectById(evaluation.getId());
         biGoodsEvaluation.setAiEvaluationContent(null);

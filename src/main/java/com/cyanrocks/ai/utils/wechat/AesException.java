@@ -20,6 +20,12 @@ public class AesException extends Exception {
 
 	private int code;
 
+	/**
+	 * Map an AES/WeChat error code to its corresponding Chinese message.
+	 *
+	 * @param code the error code constant defined in this class
+	 * @return the Chinese message for the given error code, or `null` if the code is unrecognized
+	 */
 	private static String getMessage(int code) {
 		switch (code) {
 		case ValidateSignatureError:
@@ -51,10 +57,21 @@ public class AesException extends Exception {
 		}
 	}
 
+	/**
+	 * Retrieve the integer error code associated with this exception.
+	 *
+	 * @return the error code corresponding to one of this class's constants (for example `OK` or `ValidateSignatureError`)
+	 */
 	public int getCode() {
 		return code;
 	}
 
+	/**
+	 * Constructs an AesException for the given error code and sets the exception message
+	 * corresponding to that code.
+	 *
+	 * @param code the error code identifying the AES/WeChat error (use the class constants, e.g. ValidateSignatureError)
+	 */
 	public AesException(int code) {
 		super(getMessage(code));
 		this.code = code;

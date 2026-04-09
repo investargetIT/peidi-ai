@@ -48,6 +48,12 @@ public class GlobalResponseFormatter implements ResponseBodyAdvice<Object> {
         return GenericResponse.success(o);
     }
 
+    /**
+     * Decides whether a controller response should be wrapped in a GenericResponse.
+     *
+     * @param methodParameter information about the handler method being invoked
+     * @return `true` if the response for the given handler should be wrapped with `GenericResponse`; `false` if it should be left unmodified — for example when the declaring class is `WenwenControler`, the declaring class is part of `springfox.documentation`, the method is annotated with `@ExceptionHandler`, or the method already declares `GenericResponse` as its return type.
+     */
     private Boolean filter(MethodParameter methodParameter) {
         Class<?> declaringClass = methodParameter.getDeclaringClass();
         String methodName = methodParameter.getMethod().getName();

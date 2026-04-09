@@ -45,13 +45,14 @@ public class WXBizMsgCrypt {
 	String receiveid;
 
 	/**
-	 * 构造函数
-	 * @param token 企业微信后台，开发者设置的token
-	 * @param encodingAesKey 企业微信后台，开发者设置的EncodingAESKey
-	 * @param receiveid, 不同场景含义不同，详见文档
-	 * 
-	 * @throws AesException 执行失败，请查看该异常的错误码和具体的错误信息
-	 */
+	 * Initialize a WXBizMsgCrypt instance with the WeChat token, EncodingAESKey, and receiver identifier.
+	 *
+	 * <p>Validates and decodes the provided EncodingAESKey into the AES key used for message encryption/decryption.
+	 *
+	 * @param token the developer token configured in the enterprise WeChat backend
+	 * @param encodingAesKey the EncodingAESKey configured in the enterprise WeChat backend; must be a 43-character Base64 string
+	 * @param receiveid the recipient identifier used to validate decrypted messages (meaning varies by scenario)
+	 * @throws AesException if the provided EncodingAESKey is invalid (e.g., length is not 43)
 	public WXBizMsgCrypt(String token, String encodingAesKey, String receiveid) throws AesException {
 		if (encodingAesKey.length() != 43) {
 			throw new AesException(AesException.IllegalAesKey);
@@ -62,7 +63,12 @@ public class WXBizMsgCrypt {
 		aesKey = Base64.decodeBase64(encodingAesKey + "=");
 	}
 
-	// 生成4个字节的网络字节序
+	/**
+	 * Convert an int to its 4-byte network byte order (big-endian) representation.
+	 *
+	 * @param sourceNumber the integer to encode as a 4-byte big-endian array
+	 * @return a 4-byte array representing the integer in network byte order (big-endian)
+	 */
 	byte[] getNetworkBytesOrder(int sourceNumber) {
 		byte[] orderBytes = new byte[4];
 		orderBytes[3] = (byte) (sourceNumber & 0xFF);
@@ -72,7 +78,12 @@ public class WXBizMsgCrypt {
 		return orderBytes;
 	}
 
-	// 还原4个字节的网络字节序
+	/**
+	 * Convert a 4-byte array in network byte order (big-endian) to an int.
+	 *
+	 * @param orderBytes a 4-byte array representing an unsigned 32-bit value in network (big-endian) byte order
+	 * @return the integer value reconstructed from the 4 bytes
+	 */
 	int recoverNetworkBytesOrder(byte[] orderBytes) {
 		int sourceNumber = 0;
 		for (int i = 0; i < 4; i++) {
@@ -82,7 +93,11 @@ public class WXBizMsgCrypt {
 		return sourceNumber;
 	}
 
-	// 随机生成16位字符串
+	/**
+	 * Generate a 16-character random string using uppercase letters, lowercase letters, and digits.
+	 *
+	 * @return a 16-character string containing characters A–Z, a–z, and 0–9
+	 */
 	String getRandomStr() {
 		String base = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
 		Random random = new Random();
@@ -95,11 +110,12 @@ public class WXBizMsgCrypt {
 	}
 
 	/**
-	 * 对明文进行加密.
-	 * 
-	 * @param text 需要加密的明文
-	 * @return 加密后base64编码的字符串
-	 * @throws AesException aes加密失败
+	 * Encrypts a plaintext payload using the enterprise WeChat format: a 16-byte random prefix, a 4-byte network-order length, the plaintext, and the receiveid, padded with the class's PKCS7 encoder and encrypted with AES/CBC (NoPadding).
+	 *
+	 * @param randomStr a 16-byte random string used as the message prefix
+	 * @param text the plaintext XML to encrypt
+	 * @return a Base64-encoded ciphertext string
+	 * @throws AesException if encryption or encoding fails
 	 */
 	String encrypt(String randomStr, String text) throws AesException {
 		ByteGroup byteCollector = new ByteGroup();
@@ -142,11 +158,16 @@ public class WXBizMsgCrypt {
 	}
 
 	/**
-	 * 对密文进行解密.
-	 * 
-	 * @param text 需要解密的密文
-	 * @return 解密得到的明文
-	 * @throws AesException aes解密失败
+	 * Decrypts a Base64-encoded WeChat AES-CBC ciphertext and returns the decrypted XML payload.
+	 *
+	 * The method validates the embedded receiver identifier and will fail if the decrypted
+	 * buffer is malformed or the receiver id does not match the configured value.
+	 *
+	 * @param text Base64-encoded ciphertext to decrypt (as received from WeChat).
+	 * @return the decrypted XML plaintext.
+	 * @throws AesException with code DecryptAESError if AES/Base64/cipher operations fail.
+	 * @throws AesException with code IllegalBuffer if the decrypted buffer, padding, or length fields are invalid.
+	 * @throws AesException with code ValidateCorpidError if the decrypted receiver id does not match the configured receiveid.
 	 */
 	String decrypt(String text) throws AesException {
 		byte[] original;
@@ -194,19 +215,13 @@ public class WXBizMsgCrypt {
 	}
 
 	/**
-	 * 将企业微信回复用户的消息加密打包.
-	 * <ol>
-	 * 	<li>对要发送的消息进行AES-CBC加密</li>
-	 * 	<li>生成安全签名</li>
-	 * 	<li>将消息密文和安全签名打包成xml格式</li>
-	 * </ol>
-	 * 
-	 * @param replyMsg 企业微信待回复用户的消息，xml格式的字符串
-	 * @param timeStamp 时间戳，可以自己生成，也可以用URL参数的timestamp
-	 * @param nonce 随机串，可以自己生成，也可以用URL参数的nonce
-	 * 
-	 * @return 加密后的可以直接回复用户的密文，包括msg_signature, timestamp, nonce, encrypt的xml格式的字符串
-	 * @throws AesException 执行失败，请查看该异常的错误码和具体的错误信息
+	 * Encrypts a reply XML message for Enterprise WeChat, signs it, and packages the result into the platform-required XML.
+	 *
+	 * @param replyMsg the reply message as an XML-formatted string to be encrypted
+	 * @param timeStamp the timestamp to include in the signature and package; if empty, the current time in milliseconds is used
+	 * @param nonce a random string to include in the signature and package
+	 * @return an XML string containing the ciphertext and associated fields (msg_signature, timestamp, nonce, encrypt) ready to send to the platform
+	 * @throws AesException if encryption, signing, or packaging fails (see the exception's error codes for details)
 	 */
 	public String EncryptMsg(String replyMsg, String timeStamp, String nonce) throws AesException {
 		// 加密
@@ -226,20 +241,18 @@ public class WXBizMsgCrypt {
 	}
 
 	/**
-	 * 检验消息的真实性，并且获取解密后的明文.
-	 * <ol>
-	 * 	<li>利用收到的密文生成安全签名，进行签名验证</li>
-	 * 	<li>若验证通过，则提取xml中的加密消息</li>
-	 * 	<li>对消息进行解密</li>
-	 * </ol>
-	 * 
-	 * @param msgSignature 签名串，对应URL参数的msg_signature
-	 * @param timeStamp 时间戳，对应URL参数的timestamp
-	 * @param nonce 随机串，对应URL参数的nonce
-	 * @param postData 密文，对应POST请求的数据
-	 * 
-	 * @return 解密后的原文
-	 * @throws AesException 执行失败，请查看该异常的错误码和具体的错误信息
+	 * Verify an inbound message's signature and return its decrypted plaintext XML.
+	 *
+	 * Verifies the provided signature against the SHA1 of the token, timestamp, nonce,
+	 * and the encrypted payload extracted from postData; if the signature matches the
+	 * message is decrypted and returned.
+	 *
+	 * @param msgSignature the msg_signature URL parameter to verify
+	 * @param timeStamp the timestamp URL parameter used in signature calculation
+	 * @param nonce the nonce URL parameter used in signature calculation
+	 * @param postData the POST request body containing the encrypted XML payload
+	 * @return the decrypted original XML message
+	 * @throws AesException if signature validation or decryption fails (see error codes)
 	 */
 	public String DecryptMsg(String msgSignature, String timeStamp, String nonce, String postData)
 			throws AesException {
@@ -264,14 +277,14 @@ public class WXBizMsgCrypt {
 	}
 
 	/**
-	 * 验证URL
-	 * @param msgSignature 签名串，对应URL参数的msg_signature
-	 * @param timeStamp 时间戳，对应URL参数的timestamp
-	 * @param nonce 随机串，对应URL参数的nonce
-	 * @param echoStr 随机串，对应URL参数的echostr
-	 * 
-	 * @return 解密之后的echostr
-	 * @throws AesException 执行失败，请查看该异常的错误码和具体的错误信息
+	 * Verify the URL by validating the signature and decrypting the provided echo string.
+	 *
+	 * @param msgSignature the msg_signature URL parameter to validate
+	 * @param timeStamp the timestamp URL parameter used in signature calculation
+	 * @param nonce the nonce URL parameter used in signature calculation
+	 * @param echoStr the echostr URL parameter containing the Base64 AES ciphertext to decrypt
+	 * @return the decrypted echo string (plain XML or plaintext)
+	 * @throws AesException if signature validation fails or decryption cannot be completed
 	 */
 	public String VerifyURL(String msgSignature, String timeStamp, String nonce, String echoStr)
 			throws AesException {
