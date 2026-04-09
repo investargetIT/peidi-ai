@@ -220,6 +220,17 @@ public class GoodsReviewService extends ServiceImpl<BiGoodsReviewMapper, BiGoods
 
     }
 
+    /**
+     * Retrieves BiGoodsReview records from Milvus that are semantically similar to a given question.
+     *
+     * Executes a vector search in the specified Milvus collection using the embedding of `question`
+     * and returns the matched records parsed from each entity's `json` field.
+     *
+     * @param filter         a Milvus boolean-expression filter to restrict the search (e.g., metadata predicates)
+     * @param collectionName the name of the Milvus collection to search
+     * @param question       the natural-language query whose embedding is used for the vector search
+     * @return               a list of BiGoodsReview objects parsed from matched Milvus entities' `json` field; an empty list if no matches are found
+     */
     private List<BiGoodsReview> questionProduct(MilvusClientV2 client, String filter, String collectionName, String question){
         List<BiGoodsReview> result = new ArrayList<>();
         AiEnum topK = aiEnumMapper.selectOne(Wrappers.<AiEnum>lambdaQuery()
@@ -251,6 +262,16 @@ public class GoodsReviewService extends ServiceImpl<BiGoodsReviewMapper, BiGoods
         return result;
     }
 
+    /**
+     * Ingests new goods review records into the Milvus vector collection and the relational database.
+     *
+     * For each element in {@code goodsReviews} with a non-empty review text, checks whether a record
+     * with the same review date and review text already exists; if not, determines the review sentiment,
+     * embeds the review text for vector storage, inserts a corresponding entry into the "goods_review"
+     * Milvus collection, sets the record's Milvus ID, and persists the record via the mapper.
+     *
+     * @param goodsReviews list of review records to examine and insert when missing
+     */
     public void newGoodsReview(List<BiGoodsReview> goodsReviews){
         goodsReviews.forEach(record->{
             if (StringUtils.isNotEmpty(record.getGoodsReview())){
@@ -301,6 +322,16 @@ public class GoodsReviewService extends ServiceImpl<BiGoodsReviewMapper, BiGoods
         });
     }
 
+    /**
+     * Ensures the Milvus collection "goods_review" exists with the expected schema and indexes,
+     * and populates Milvus (and the SQL table) with existing SQL reviews that have text and a detected sentiment.
+     *
+     * For each SQL record with non-empty review text, detects sentiment, skips records with no detected sentiment,
+     * generates a numeric Milvus id, builds the Milvus insert payload (metadata, serialized JSON, and embedding vector),
+     * sets the record's Milvus id and inserts the record into the relational table, then inserts all prepared items into Milvus.
+     *
+     * @throws Exception if collection creation, data insertion, sentiment detection, embedding, or database operations fail
+     */
     public void test() throws Exception {
         ConnectConfig config = ConnectConfig.builder()
                 .uri(milvusUri)

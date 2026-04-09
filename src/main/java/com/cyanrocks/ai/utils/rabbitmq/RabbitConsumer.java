@@ -81,6 +81,15 @@ public class RabbitConsumer {
     private static final String REDIS_KEY = "kefu:wechat:token";
 
 
+    /**
+     * Process a single PDF chunk: write the chunk to a temporary file, invoke the AI model to extract text/markdown,
+     * persist the resulting record into the Milvus collection "pdf_markdown", acknowledge the message on success,
+     * and negatively acknowledge (without requeue) on failure; the temporary file is removed in all cases.
+     *
+     * @param task the PDF chunk task containing the chunk bytes, batch number, original filename and request payload
+     * @param deliveryTag the RabbitMQ delivery tag for the incoming message (used for manual ACK/NACK)
+     * @param channel the RabbitMQ channel used to send ACK or NACK for the message
+     */
     @RabbitListener(queues = "pdf.process.queue", containerFactory = "pdfContainerFactory")
     public void processPdfChunk(PdfChunkTask task, @Header(AmqpHeaders.DELIVERY_TAG) long deliveryTag,
                                 Channel channel) {
@@ -129,6 +138,11 @@ public class RabbitConsumer {
         }
     }
 
+    /**
+     * Processes an AiDraw request by generating images, uploading them to OSS, and updating the AiDraw record with resulting image paths and status.
+     *
+     * @param draw the AiDraw record containing request parameters (UUID, URL params, size, retry settings); this record is updated with the uploaded image list, update timestamp, and status
+     */
     @RabbitListener(queues = "draw.process.queue", containerFactory = "drawContainerFactory")
     public void processDraw(AiDraw draw){
         System.out.println("开始处理 " + draw.getUuid() + " 图片");
@@ -155,6 +169,18 @@ public class RabbitConsumer {
         System.out.println("处理完成 " + draw.getUuid() + " 图片");
     }
 
+    /**
+     * Handles a queued WeCom callback payload: extracts the user question, runs a semantic search against the PDF markdown collection,
+     * and posts a markdown reply to the message's callback URL.
+     *
+     * <p>The posted markdown contains the rewritten question and either the semantic search result text or a fallback message.</p>
+     *
+     * @param rabbit raw JSON payload from the queue; expected to contain an `sMsg` object with:
+     *               - `text.content` (the incoming message text),
+     *               - `from.userid` (the sender id used for semantic search context),
+     *               - `response_url` (the HTTP callback URL to receive the markdown reply)
+     * @throws ListenerExecutionFailedException if parsing, semantic search, HTTP request execution, or response handling fails
+     */
     @RabbitListener(queues = "wecom.process.queue", containerFactory = "wecomContainerFactory")
     public void processWecom(String rabbit) {
         try {
@@ -202,6 +228,14 @@ public class RabbitConsumer {
         }
     }
 
+    /**
+     * Process a customer-service (KF) request consumed from the kefu queue: perform a semantic search (optionally using images referenced in the payload), then send one or more WeCom KF text messages back to the specified recipient.
+     *
+     * The method obtains and caches a WeCom access token in Redis as needed, may download media referenced by the payload's image list, invokes semantic search, splits overly long responses into UTF-8 byte-sized segments, and sends each segment as a separate KF message.
+     *
+     * @param rabbit JSON string payload containing at least the following fields: `"que"` (the question text), `"imgList"` (array of WeCom media IDs, optional), `"touser"` (recipient), and `"open_kfid"` (KF account id)
+     * @throws ListenerExecutionFailedException if processing fails (e.g., token retrieval, image download, semantic search, or sending messages)
+     */
     @RabbitListener(queues = "kefu.process.queue", containerFactory = "kefuContainerFactory")
     public void processKefu(String rabbit) {
         try {
@@ -322,6 +356,15 @@ public class RabbitConsumer {
         }
     }
 
+    /**
+     * Split a string into segments whose UTF-8 encoded byte length does not exceed the specified maximum.
+     *
+     * Segments preserve character boundaries (no character is split across segments).
+     *
+     * @param text the input string to split; if null or empty an empty list is returned
+     * @param maxBytes the maximum allowed UTF-8 byte length per segment (must be > 0 for meaningful results)
+     * @return a list of string segments where each segment's UTF-8 byte length is ≤ maxBytes; returns an empty list if the input is null or empty
+     */
     private List<String> splitByByteLength(String text, int maxBytes) {
         if (text == null || text.isEmpty()) {
             return new ArrayList<>();
@@ -351,6 +394,12 @@ public class RabbitConsumer {
         return parts;
     }
 
+    /**
+     * Map an image MIME content type to a filename extension.
+     *
+     * @param contentType the MIME type of the image (e.g., "image/png"); may be null
+     * @return the corresponding file extension including the leading dot (e.g., ".png"); returns ".jpg" for null or unknown types
+     */
     private String getFileExtension(String contentType) {
         if (contentType == null) return ".jpg";
 

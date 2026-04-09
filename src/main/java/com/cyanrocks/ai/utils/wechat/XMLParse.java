@@ -25,10 +25,15 @@ import java.io.StringReader;
 class XMLParse {
 
 	/**
-	 * 提取出xml数据包中的加密消息
-	 * @param xmltext 待提取的xml字符串
-	 * @return 提取出的加密消息字符串
-	 * @throws AesException 
+	 * Extracts the encrypted payload value from an XML message.
+	 *
+	 * <p>Parses the provided XML text and returns a three-element Object array where
+	 * index 0 is set to 0 and index 1 contains the text content of the first
+	 * &lt;Encrypt&gt; element.</p>
+	 *
+	 * @param xmltext the XML string to parse
+	 * @return an Object[3] with index 0 == 0 and index 1 == the extracted encrypted string
+	 * @throws AesException if the XML cannot be parsed or the expected element is missing
 	 */
 	public static Object[] extract(String xmltext) throws AesException     {
 		Object[] result = new Object[3];
@@ -85,12 +90,13 @@ class XMLParse {
 	}
 
 	/**
-	 * 生成xml消息
-	 * @param encrypt 加密后的消息密文
-	 * @param signature 安全签名
-	 * @param timestamp 时间戳
-	 * @param nonce 随机字符串
-	 * @return 生成的xml字符串
+	 * Builds an XML message containing the encrypted payload and its metadata.
+	 *
+	 * @param encrypt  the encrypted message ciphertext to place inside <![CDATA[...]]> of the `<Encrypt>` element
+	 * @param signature the message signature to place inside <![CDATA[...]]> of the `<MsgSignature>` element
+	 * @param timestamp the timestamp value to place in the `<TimeStamp>` element
+	 * @param nonce    a random string to place inside <![CDATA[...]]> of the `<Nonce>` element
+	 * @return         an XML string with root `<xml>` containing `<Encrypt>`, `<MsgSignature>`, `<TimeStamp>`, and `<Nonce>` (CDATA-wrapped where shown)
 	 */
 	public static String generate(String encrypt, String signature, String timestamp, String nonce) {
 

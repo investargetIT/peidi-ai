@@ -67,6 +67,12 @@ public class AiModelUtils {
     @Autowired
     private ImageConverter imageConverter;
 
+    /**
+     * Generate a sentiment description for the provided text using the configured AI model.
+     *
+     * @param text the input text to analyze for sentiment
+     * @return the sentiment text extracted from the model response, or `null` if the response cannot be parsed or all retry attempts fail
+     */
     public String getTextSentiment(String text) {
         final int MAX_RETRIES = 3;
         AiModel aiModel = aiModelMapper.selectOne(Wrappers.<AiModel>lambdaQuery().eq(AiModel::getType, "getTextSentiment").eq(AiModel::getActive, true));
@@ -150,6 +156,12 @@ public class AiModelUtils {
         return null;
     }
 
+    /**
+     * Generate a word-cloud-style summary or description from the given list of phrases using the configured AI model.
+     *
+     * @param wordList the list of phrases to include in the word cloud input
+     * @return the generated word-cloud text if available, `null` when the model response cannot be parsed or no result is produced
+     */
     public String getIntelligenceWordCloud(List<String> wordList) {
         final int MAX_RETRIES = 3;
         AiModel aiModel = aiModelMapper.selectOne(Wrappers.<AiModel>lambdaQuery().eq(AiModel::getType, "getIntelligenceWordCloud").eq(AiModel::getActive, true));
@@ -233,6 +245,15 @@ public class AiModelUtils {
         return null;
     }
 
+    /**
+     * Generates a reranked or rewritten review summary based on the provided reviews and question.
+     *
+     * Sends the reviews and question to a configured AI model and returns the model's extracted text result.
+     *
+     * @param reviewList the list of reviews to be considered for reranking/rewrite
+     * @param question   the guiding question or instruction for the rerank/rewrite
+     * @return the text produced by the model (the reranked/rewritten review), or `null` if the response could not be parsed or all retry attempts failed
+     */
     public String getReviewRerank(List<BiGoodsReview> reviewList, String question) {
         final int MAX_RETRIES = 3;
         AiModel aiModel = aiModelMapper.selectOne(Wrappers.<AiModel>lambdaQuery().eq(AiModel::getType, "getReviewRerank").eq(AiModel::getActive, true));
@@ -317,6 +338,16 @@ public class AiModelUtils {
     }
 
 
+    /**
+     * Sends an image to the configured multimodal AI model and returns the model's extracted text interpretation.
+     *
+     * The input image is converted to a JPEG Base64 payload and submitted to the multimodal-generation endpoint;
+     * the method returns the first available `"text"` field from the model's response content or the content string
+     * if the response content is returned as a string.
+     *
+     * @param file the uploaded image file to parse (converted to JPEG before sending)
+     * @return the extracted text returned by the model, or `null` if image conversion, network request, or response parsing fails
+     */
     public String parseIntelligenceProduct(MultipartFile file) {
         AiModel aiModel = aiModelMapper.selectOne(Wrappers.<AiModel>lambdaQuery().eq(AiModel::getType, "parseIntelligenceProduct").eq(AiModel::getActive, true));
         BufferedImage image = imageConverter.toBufferedImage(file);
@@ -413,6 +444,17 @@ public class AiModelUtils {
         return null;
     }
 
+    /**
+     * Generate a model-based answer to a question using the provided context and prior chat history.
+     *
+     * Sends the question and context to the configured AI model along with the conversational history and returns the model's response text.
+     *
+     * @param question the user's question to answer
+     * @param text supporting text or contextual information to include with the question
+     * @param historyList prior user/assistant exchanges to include as conversational history
+     * @return the extracted response text from the model, or `null` if no parsable text is returned
+     * @throws SocketTimeoutException if a socket timeout occurs while performing the request
+     */
     public String callWithMessage(String question, String text, List<AiQueryHistory> historyList) throws SocketTimeoutException {
         final int MAX_RETRIES = 3;
         AiModel aiModel = aiModelMapper.selectOne(Wrappers.<AiModel>lambdaQuery().eq(AiModel::getType, "callWithMessage").eq(AiModel::getActive, true));
@@ -515,6 +557,18 @@ public class AiModelUtils {
         return null;
     }
 
+    /**
+     * Produce a model-generated reply to a question using provided context and conversation history.
+     *
+     * Constructs a DashScope text-generation request from the active "callWithMessageNoMarkdown" model,
+     * includes system prompt and prior messages, and returns the model's reply text or a fixed apology when parsing fails.
+     *
+     * @param question     the current question to ask the model
+     * @param text         supporting text or documents to include with the question
+     * @param historyList  prior user/assistant exchanges to include as conversation context
+     * @return             the model's reply text, or the fixed apology message when the response cannot be parsed or all retries fail
+     * @throws SocketTimeoutException if a socket timeout occurs during the HTTP request
+     */
     public String callWithMessageNoMarkdown(String question, String text, List<AiQueryHistory> historyList) throws SocketTimeoutException {
         final int MAX_RETRIES = 3;
         AiModel aiModel = aiModelMapper.selectOne(Wrappers.<AiModel>lambdaQuery().eq(AiModel::getType, "callWithMessageNoMarkdown").eq(AiModel::getActive, true));
@@ -618,6 +672,17 @@ public class AiModelUtils {
     }
 
 
+    /**
+     * Sends a multimodal chat request (question + optional image + supporting text and history) to the configured GRSAI streaming endpoint and returns the model's assembled response.
+     *
+     * The returned text will have any "<think>...</think>" section removed if present. If the request fails after retries, returns the fallback message "请稍后再试".
+     *
+     * @param question    the user question to ask the model
+     * @param file        an optional image file to include as supporting context; may be null or empty
+     * @param text        supplementary textual context to include with the question
+     * @param historyList previous user/assistant exchanges to include as conversation history
+     * @return the model's response text with any "<think>...</think>" content stripped, or the fallback string "请稍后再试" if all retries fail
+     */
     public String callWithMessageWithImg(String question, MultipartFile file, String text, List<AiQueryHistory> historyList) {
         final int MAX_RETRIES = 3;
         AiModel aiModel = aiModelMapper.selectOne(Wrappers.<AiModel>lambdaQuery().eq(AiModel::getType, "callWithMessageWithImg").eq(AiModel::getActive, true));
@@ -740,6 +805,17 @@ public class AiModelUtils {
         return "请稍后再试";
     }
 
+    /**
+     * Sends a multimodal chat request (text + multiple images) to the GRSAI streaming endpoint and returns the assistant's reply with any internal `<think>` sections removed.
+     *
+     * The method includes prior conversation history in the request, encodes provided image files as data URLs (attempting to infer MIME types when missing), streams incremental SSE responses, concatenates `delta.content` fragments, and strips a `<think>...</think>` block if present before returning.
+     *
+     * @param question     the user's current question to include in the request
+     * @param files        a list of image files to attach as supplemental context; null or empty lists are allowed, non-image or unreadable files are skipped
+     * @param text         supplemental textual context to include with the question
+     * @param historyList  prior user/assistant message pairs to include as conversation history
+     * @return the assistant's aggregated response text with any `<think>` section removed; returns the fixed fallback string `"请稍后再试"` if the request fails after retries or no valid response is produced
+     */
     public String callWithMessageWithImgNoMarkdown(String question, List<MultipartFile> files, String text, List<AiQueryHistory> historyList) {
         System.out.println("接收到"+files.size()+"张图片");
         final int MAX_RETRIES = 3;
@@ -906,6 +982,12 @@ public class AiModelUtils {
         return "请稍后再试";
     }
 
+    /**
+     * Extracts a date in yyyy-MM-dd format from the provided text using the configured AI model.
+     *
+     * @param question the input text from which to extract the date
+     * @return the extracted date as a string in `yyyy-MM-dd` format if found, `null` otherwise
+     */
     public String callWithGetDate(String question) {
         final int MAX_RETRIES = 3;
         AiModel aiModel = aiModelMapper.selectOne(Wrappers.<AiModel>lambdaQuery().eq(AiModel::getType, "callWithGetDate").eq(AiModel::getActive, true));
@@ -1155,6 +1237,15 @@ public class AiModelUtils {
         return null;
     }
 
+    /**
+     * Generate an AI-guided answer for a GBI question using provided table/field descriptions and sample SQL.
+     *
+     * <p>The method sends the question and the accompanying schema/SQL context to the configured AI model and returns the first text result extracted from the model response.</p>
+     *
+     * @param question the user's question about GBI or SQL issues
+     * @param text contextual information describing tables, fields, example SQL (e.g., table/field explanations and sample queries)
+     * @return the model's response text when successfully extracted, or `null` if the response cannot be parsed or no valid text is produced
+     */
     public String callWithGbiQa(String question, String text) {
         final int MAX_RETRIES = 3;
         AiModel aiModel = aiModelMapper.selectOne(Wrappers.<AiModel>lambdaQuery().eq(AiModel::getType, "callWithGbiQa").eq(AiModel::getActive, true));
@@ -1323,6 +1414,16 @@ public class AiModelUtils {
         return null;
     }
 
+    /**
+     * Generate a repaired SQL statement or an explanatory response based on a user question,
+     * table/field logic description, the candidate SQL, and the SQL error message.
+     *
+     * @param question  the user's question or task description related to the SQL
+     * @param text      explanation of table and field logic that provides context for repairing the SQL
+     * @param sql       the candidate SQL statement to be repaired
+     * @param exception the error message produced when the candidate SQL failed
+     * @return the model's repaired SQL or explanatory text when available, or `null` if the response cannot be parsed
+     */
     public String gbiSqlRepair(String question, String text, String sql, String exception) {
         final int MAX_RETRIES = 3;
         AiModel aiModel = aiModelMapper.selectOne(Wrappers.<AiModel>lambdaQuery().eq(AiModel::getType, "gbiSqlRepair").eq(AiModel::getActive, true));
@@ -1407,6 +1508,15 @@ public class AiModelUtils {
         return null;
     }
 
+    /**
+     * Converts a BufferedImage to an RGB JPEG and returns its Base64-encoded bytes.
+     *
+     * The conversion removes any alpha channel by drawing the source image onto a white RGB canvas
+     * and then encoding the resulting JPEG bytes as a Base64 string.
+     *
+     * @param originalImage the source image to convert
+     * @return a Base64-encoded JPEG representation of the image, or `null` if conversion fails
+     */
     private String convertImageToJpegBase64(BufferedImage originalImage) {
         try {
             // 创建一个新的RGB图像（移除Alpha通道）
@@ -1430,6 +1540,14 @@ public class AiModelUtils {
         return null;
     }
 
+    /**
+     * Uploads the given file to DashScope, runs a streaming chat-completion that references the uploaded file,
+     * and returns the concatenated streamed response content.
+     *
+     * @param tempFile the local file path to upload and process
+     * @return the aggregated text produced by the streaming chat completion
+     * @throws RuntimeException if processing ultimately fails after retries or if a retry is interrupted
+     */
     public String processFile(Path tempFile) {
         // 将文件上传到阿里云
         System.out.println("将文件上传到阿里云");
@@ -1485,6 +1603,14 @@ public class AiModelUtils {
         throw new RuntimeException("处理文件失败，已重试" + maxRetries + "次");
     }
 
+    /**
+     * Determines whether the given exception represents a rate-limit error from the remote service.
+     *
+     * Checks the exception message for known rate-limit indicators.
+     *
+     * @param e the exception to inspect
+     * @return `true` if the exception message contains "429", "rate_limit", or "Too many requests"; `false` otherwise
+     */
     private boolean isRateLimitError(Exception e) {
         // 判断是否是阿里云 429 错误
         String message = e.getMessage();
@@ -1496,6 +1622,16 @@ public class AiModelUtils {
                 || message.contains("Too many requests");
     }
 
+    /**
+     * Extracts text information from an uploaded image by sending it to the DashScope multimodal generation endpoint.
+     *
+     * Converts the provided image to a JPEG Base64 payload, posts it to the configured model with the model's prompt,
+     * and returns the first `"text"` field found in the model's response content or the content string if present.
+     * If image conversion fails, the response shape is unexpected, non-200 responses persist, or all retries are exhausted, returns `null`.
+     *
+     * @param file the uploaded image file to process
+     * @return the extracted text from the model response, or `null` when extraction fails or no text is available
+     */
     public String processPageWithQwen(MultipartFile file) {
         AiModel aiModel = aiModelMapper.selectOne(Wrappers.<AiModel>lambdaQuery().eq(AiModel::getType, "processPageWithQwen").eq(AiModel::getActive, true));
         BufferedImage image = imageConverter.toBufferedImage(file);
@@ -1592,6 +1728,13 @@ public class AiModelUtils {
         return null;
     }
 
+    /**
+     * Compare two sets of product reviews and produce a model-generated comparison or summary.
+     *
+     * @param productReview       reviews for the product being evaluated
+     * @param compareProductReview reviews for the competing product
+     * @return a model-generated comparison text if successfully extracted from the response, `null` otherwise
+     */
     public String compareProductReviews(List<String> productReview, List<String> compareProductReview) {
         final int MAX_RETRIES = 3;
         AiModel aiModel = aiModelMapper.selectOne(Wrappers.<AiModel>lambdaQuery().eq(AiModel::getType, "compareProductReviews").eq(AiModel::getActive, true));
@@ -1675,6 +1818,16 @@ public class AiModelUtils {
         return null;
     }
 
+    /**
+     * Parse streamed model output into a JSON array and validate that the result count matches the provided IDs.
+     *
+     * Sends the given input text to the configured streaming model, accumulates the streamed content, strips any
+     * internal `<think>` sections, and attempts to parse the final output as a JSON array.
+     *
+     * @param text   the input data to be parsed by the model
+     * @param idList the list of expected identifiers; the method returns a result only if the parsed array size equals this list's size
+     * @return       a JSONArray of parsed results when parsing succeeds and the array size equals idList.size(), or `null` otherwise
+     */
     public JSONArray getChewyParse(String text,List<String> idList) {
         final int MAX_RETRIES = 3;
         AiModel aiModel = aiModelMapper.selectOne(Wrappers.<AiModel>lambdaQuery().eq(AiModel::getType, "getChewyParse").eq(AiModel::getActive, true));
@@ -1772,6 +1925,12 @@ public class AiModelUtils {
         return null;
     }
 
+    /**
+     * Generate an evaluation summary for the given BiGoodsEvaluation using the configured AI model.
+     *
+     * @param evaluation the evaluation object whose fields are serialized and sent as the user prompt to the model
+     * @return the text extracted from the model's response if parsing succeeds, or `null` if the request or response parsing fails
+     */
     public String getEvaluation(BiGoodsEvaluation evaluation) {
         final int MAX_RETRIES = 3;
         AiModel aiModel = aiModelMapper.selectOne(Wrappers.<AiModel>lambdaQuery().eq(AiModel::getType, "getEvaluation").eq(AiModel::getActive, true));

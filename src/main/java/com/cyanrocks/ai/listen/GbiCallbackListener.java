@@ -18,6 +18,15 @@ public class GbiCallbackListener {
     @Value("${dingtalk.app.client-secret}")
     private String clientSecret;
 
+    /**
+     * Create and configure an OpenDingTalkClient for DingTalk stream callbacks.
+     *
+     * <p>The returned client is configured with app credentials and registers the provided
+     * GbiCallbackService as the listener for the CARD_CALLBACK_TOPIC.</p>
+     *
+     * @return a configured OpenDingTalkClient that listens for CARD_CALLBACK_TOPIC callbacks
+     * @throws Exception if the client cannot be built or initialized
+     */
     @Bean(initMethod = "start")
     public OpenDingTalkClient configureStreamClientGbi(@Autowired GbiCallbackService gbiCallbackService) throws Exception {
         // init stream client

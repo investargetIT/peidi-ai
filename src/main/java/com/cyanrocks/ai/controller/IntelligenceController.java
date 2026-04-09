@@ -68,6 +68,12 @@ public class IntelligenceController {
         return intelligenceService.question(question, "reddit");
     }
 
+    /**
+     * Retrieve reviews for the specified intelligence product ID.
+     *
+     * @param id the intelligence product identifier to fetch reviews for
+     * @return a list of Review objects associated with the given product ID
+     */
     @GetMapping("/reviews")
     @ApiOperation(value = "获取评论列表")
     public List<RedditMilvus.Review> getReview(@RequestParam String id) {

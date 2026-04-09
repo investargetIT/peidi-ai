@@ -31,9 +31,14 @@ public class LlmRobotMsgCallbackConsumer implements OpenDingTalkCallbackListener
     private StringRedisTemplate stringRedisTemplate;
     private static final String REDIS_KEY = "ding:llmListen:";
 
-    /*
-     * @param request
-     * @return
+    /**
+     * Handle a DingTalk callback by deduplicating the incoming user message, sending an LLM card, and scheduling streaming updates.
+     *
+     * <p>Examines the incoming payload for senderStaffId and text.content, prevents rapid duplicate processing per user via Redis,
+     * initiates card sending and streaming/update callbacks through the card manager, and clears Redis state on error to allow retries.</p>
+     *
+     * @param request the DingTalk callback payload; must contain "senderStaffId" (user id) and a nested "text" object with "content"
+     * @return an empty JSONObject (used as an acknowledgement response)
      */
     @Override
     public JSONObject execute(JSONObject request) {

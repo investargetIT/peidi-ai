@@ -38,6 +38,13 @@ public class MilvusController {
 
     private static final String milvusCollection = "pdf_markdown";
 
+    /**
+     * Perform a semantic search against the Milvus `pdf_markdown` collection using a user question and an optional uploaded file.
+     *
+     * @param question the query text to search for
+     * @param file     an optional uploaded file whose content is used as additional context for the search
+     * @return         a map of semantic search results keyed by result field names
+     */
     @PostMapping("/wenwen/question")
     @ApiOperation(value = "佩蒂问问查询问题")
     public Map<String, String> pdfQuestion(@RequestParam("question") String question,
@@ -45,6 +52,17 @@ public class MilvusController {
         return milvusUtils.semanticSearch2(question, file, "pdf_markdown", "03365042031527679493",null);
     }
 
+    /**
+     * Retrieve a paginated list of AiMilvusPdfMarkdown entries.
+     *
+     * Supports optional sorting and filtering via the `sortStr` and `searchStr` parameters.
+     *
+     * @param pageNo   the page number to retrieve
+     * @param pageSize the number of items per page
+     * @param sortStr  optional sorting expression (e.g., field and direction)
+     * @param searchStr optional search or filter expression
+     * @return an IPage containing AiMilvusPdfMarkdown records for the requested page
+     */
     @GetMapping("/page")
     @ApiOperation(value = "获取分页")
     public IPage<AiMilvusPdfMarkdown> getMilvusPdfMarkdownPage(@RequestParam int pageNo, @RequestParam int pageSize,

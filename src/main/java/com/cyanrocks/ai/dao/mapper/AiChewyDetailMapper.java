@@ -11,6 +11,11 @@ import java.util.List;
 @Mapper
 public interface AiChewyDetailMapper extends BaseMapper<AiChewyDetail> {
 
+    /**
+     * Retrieve all AiChewyDetail rows with id greater than 9753, ordered by id ascending.
+     *
+     * @return a list of AiChewyDetail entities where id > 9753, ordered by id ascending
+     */
     @Select("select * from ai_chewy_detail where id > 9753 order by id asc")
     List<AiChewyDetail> selectAll();
 

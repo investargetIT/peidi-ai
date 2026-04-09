@@ -46,6 +46,12 @@ public class CommonController {
     @Autowired
     private GoodsReviewService goodsReviewService;
 
+    /**
+     * Retrieve the list of enums for the specified type.
+     *
+     * @param type the enum type identifier used to filter which enums to return
+     * @return a list of AiEnum objects matching the specified type
+     */
     @GetMapping("/enum")
 
 
@@ -159,6 +165,14 @@ public class CommonController {
 
     }
 
+    /**
+     * Parse product details from a Chewy product URL, optionally using uploaded detail and ingredient files.
+     *
+     * @param url the Chewy product page URL to parse
+     * @param title the product title to associate with the parsed data
+     * @param detail optional multipart file containing additional product detail content
+     * @param ingredientInformation optional multipart file containing ingredient information
+     */
     @PostMapping("/chewy/parse")
     @ApiOperation(value = "文件上传")
     public void parseChewy(@RequestParam(value = "url") String url,
@@ -168,6 +182,11 @@ public class CommonController {
         aiChewyDetailService.parseChewy(url, title, detail, ingredientInformation);
     }
 
+    /**
+     * Persist a list of BiGoodsReview records.
+     *
+     * @param goodsReviews the list of BiGoodsReview entities to insert; each element represents a single review record
+     */
     @PostMapping("/goods-review/new")
     @ApiOperation(value = "bi_goods_review数据新增")
     public void newGoodsReview(@RequestBody List<BiGoodsReview> goodsReviews) {

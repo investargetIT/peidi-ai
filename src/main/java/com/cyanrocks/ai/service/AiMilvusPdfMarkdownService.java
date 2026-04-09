@@ -51,6 +51,15 @@ public class AiMilvusPdfMarkdownService extends ServiceImpl<AiMilvusPdfMarkdownM
         return baseMapper.getMilvusPdfMarkdownPage(new Page<>(pageNo, pageSize), searchSb, sortSb);
     }
 
+    /**
+     * Updates Milvus documents and corresponding database records for all PDF entries that share the provided title.
+     *
+     * Validates that any existing records with the same title have the same source; attempts to update each found Milvus document (by its stored Milvus ID) with values from `milvusPdfMarkdown`; if at least one Milvus update succeeds, applies the provided fields to database rows matching the title.
+     *
+     * @param milvusPdfMarkdown the DTO containing updated fields to apply to Milvus documents and database records; its `title` is used to locate existing rows and its `milvusId` is set per existing record before each Milvus update attempt
+     * @param collection the Milvus collection name in which the documents are stored
+     * @throws BusinessException if an existing record with the same title has a different `source` than `milvusPdfMarkdown`
+     */
     public void updateMilvusPdfMarkdown(AiMilvusPdfMarkdown milvusPdfMarkdown, String collection){
             List<AiMilvusPdfMarkdown> sameTitle = baseMapper.selectList(Wrappers.<AiMilvusPdfMarkdown>lambdaQuery()
                     .eq(AiMilvusPdfMarkdown::getTitle, milvusPdfMarkdown.getTitle()));
@@ -75,6 +84,16 @@ public class AiMilvusPdfMarkdownService extends ServiceImpl<AiMilvusPdfMarkdownM
         }
     }
 
+    /**
+     * Deletes database records that share the given title and removes their corresponding Milvus documents when applicable.
+     *
+     * For each database record with the same title as the provided `milvusPdfMarkdown`:
+     * - If the record's `milvusId` is null, the database row is deleted.
+     * - Otherwise, attempts to delete the document in Milvus by that `milvusId`; if the Milvus delete succeeds, the database row is deleted.
+     *
+     * @param milvusPdfMarkdown object whose title is used to find matching records; its `milvusId` field will be set per-record during processing
+     * @param collection the Milvus collection name in which to delete documents
+     */
     public void deleteMilvusPdfMarkdown(AiMilvusPdfMarkdown milvusPdfMarkdown, String collection){
         //根据旧的title获取对应的所有milvusId
         List<AiMilvusPdfMarkdown> olds = baseMapper.selectList(Wrappers.<AiMilvusPdfMarkdown>lambdaQuery()
