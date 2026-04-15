@@ -650,7 +650,7 @@ public class AiModelUtils {
                     if (mimeType == null) mimeType = "image/jpeg";
 
                     JSONObject imageUrlObj = new JSONObject();
-                    imageUrlObj.put("url", mimeType + ";base64," + base64Image);
+                    imageUrlObj.put("url", "data:" + mimeType + ";base64," + base64Image);
                     contentArray.add(new JSONObject().fluentPut("type", "image_url").fluentPut("image_url", imageUrlObj));
                 }
                 JSONObject userMessage = new JSONObject();
@@ -661,11 +661,12 @@ public class AiModelUtils {
                 param.put("messages", messages);
                 param.put("model", aiModel.getModelName());
                 param.put("stream", true);
+                param.put("enable_thinking", false);
 
                 Request request = new Request.Builder()
-                        .url("https://grsaiapi.com/v1/chat/completions")
+                        .url("https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions")
                         .post(RequestBody.create(JSONObject.toJSONString(param), MediaType.get("application/json; charset=utf-8")))
-                        .addHeader("Authorization", "Bearer " + apiKeyTest)
+                        .addHeader("Authorization", "Bearer " + DASHSCOPE_API_KEY)
                         .addHeader("Content-Type", "application/json")
                         .build();
                 OkHttpClient client = new OkHttpClient.Builder()
@@ -691,6 +692,7 @@ public class AiModelUtils {
 
                             if (line.startsWith("data: ")) {
                                 String dataStr = line.substring(6).trim();
+                                System.out.println("dataStr:" + dataStr);
                                 if (!dataStr.isEmpty()) {
                                     try {
                                         ObjectMapper objectMapper = new ObjectMapper();
@@ -825,11 +827,12 @@ public class AiModelUtils {
                 param.put("messages", messages);
                 param.put("model", aiModel.getModelName());
                 param.put("stream", true);
+                param.put("enable_thinking", false);
 
                 Request request = new Request.Builder()
-                        .url("https://grsaiapi.com/v1/chat/completions")
+                        .url("https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions")
                         .post(RequestBody.create(JSONObject.toJSONString(param), MediaType.get("application/json; charset=utf-8")))
-                        .addHeader("Authorization", "Bearer " + apiKeyTest)
+                        .addHeader("Authorization", "Bearer " + DASHSCOPE_API_KEY)
                         .addHeader("Content-Type", "application/json")
                         .build();
                 OkHttpClient client = new OkHttpClient.Builder()
