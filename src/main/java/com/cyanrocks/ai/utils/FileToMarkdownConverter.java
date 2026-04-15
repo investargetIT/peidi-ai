@@ -32,6 +32,7 @@ import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.tika.Tika;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
@@ -57,10 +58,10 @@ import java.util.logging.Logger;
 public class FileToMarkdownConverter {
 
     private static final Logger logger = Logger.getLogger(FileToMarkdownConverter.class.getName());
-    private static final String DASHSCOPE_API_KEY = "";
-//    private static final String DASHSCOPE_API_KEY = "sk-17ec61d83bba433f8acb638aeced5ab8";
     private static final String API_URL = "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation";
-    private static final String MODEL_NAME = "qwen2.5-vl-72b-instruct";
+
+    @Value("${dashscope.api-key}")
+    private String dashscopeApiKey;
 
     private static final String UPLOAD_PDF_PATH = "ai/pdf/";
     private static final String UPLOAD_MARKDOWN_PATH = "ai/pdf-markdown/";
@@ -335,7 +336,7 @@ public class FileToMarkdownConverter {
             try (CloseableHttpClient httpClient = HttpClients.createDefault()) {
                 // 创建HTTP POST请求
                 HttpPost httpPost = new HttpPost(API_URL);
-                httpPost.setHeader("Authorization", "Bearer " + DASHSCOPE_API_KEY);
+                httpPost.setHeader("Authorization", "Bearer " + dashscopeApiKey);
                 httpPost.setHeader("Content-Type", "application/json");
 
                 // 使用FastJSON构建请求体
