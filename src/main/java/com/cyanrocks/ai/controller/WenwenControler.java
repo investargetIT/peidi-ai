@@ -167,6 +167,19 @@ public class WenwenControler {
                 return "";
             }
 
+            //非群聊场景，直接回复提示
+            String chatType = JSONObject.parseObject(sMsg).getString("chattype");
+            if (!"group".equals(chatType)) {
+                JSONObject singleReply = new JSONObject();
+                singleReply.put("msgtype", "stream");
+                JSONObject stream2 = new JSONObject();
+                stream2.put("id", UUID.randomUUID().toString());
+                stream2.put("finish", true);
+                stream2.put("content", "本助手仅支持群聊场景使用");
+                singleReply.put("stream", stream2);
+                return wxcpt.EncryptMsg(JSONObject.toJSONString(singleReply), timestamp, nonce);
+            }
+
             //消息发送到rebbitMq中
             JSONObject rabbit = new JSONObject();
             rabbit.put("sMsg", sMsg);
