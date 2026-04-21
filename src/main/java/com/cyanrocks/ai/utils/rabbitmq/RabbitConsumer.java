@@ -155,7 +155,8 @@ public class RabbitConsumer {
         System.out.println("处理完成 " + draw.getUuid() + " 图片");
     }
 
-    @RabbitListener(queues = "wecom.process.queue", containerFactory = "wecomContainerFactory")
+    // wecom 消息已改为 controller 直接异步处理，不再使用 RabbitMQ
+    // @RabbitListener(queues = "wecom.process.queue", containerFactory = "wecomContainerFactory")
     public void processWecom(String rabbit) {
         try {
             JSONObject rabbitObject = JSONObject.parseObject(rabbit);
@@ -282,8 +283,8 @@ public class RabbitConsumer {
             sendReq.put("touser", rabbitObject.getString("touser"));
             sendReq.put("open_kfid", rabbitObject.get("open_kfid"));
             sendReq.put("msgtype", "text");
-            String result = searchResult.get("text") == null ? "实在抱歉，这个问题超出我的解答范围啦，麻烦你移步项目群咨询项目辅导员，他们会及时为你答疑的～" : searchResult.get("text");
-            String content = "### 你是否在问："+searchResult.get("rewriteQuestion")+"\n"+result;
+            String result = searchResult.get("text") == null ? "本助手仅支持群聊场景使用" : searchResult.get("text");
+            String content = stripMarkdown(result);
             // 检查是否超长（2048 字节）
             List<String> contentList = new ArrayList<>();
             byte[] contentBytes = content.getBytes(StandardCharsets.UTF_8);
@@ -320,6 +321,36 @@ public class RabbitConsumer {
             System.err.println("处理失败: " + e.getMessage());
             throw new ListenerExecutionFailedException("处理失败", e);
         }
+    }
+
+    private String stripMarkdown(String text) {
+        if (text == null) return null;
+        String[] lines = text.replaceAll("<br\\s*/?>", "\n").split("\n");
+        StringBuilder sb = new StringBuilder();
+        for (String line : lines) {
+            String trimmed = line.trim();
+            // 跳过表格分隔行
+            if (trimmed.matches("^[|:\\- ]+$")) continue;
+            // 表格行：去掉 | 分隔符，用空格连接各列
+            if (trimmed.startsWith("|") && trimmed.endsWith("|")) {
+                String row = trimmed.substring(1, trimmed.length() - 1);
+                String cols = java.util.Arrays.stream(row.split("\\|"))
+                        .map(String::trim).filter(s -> !s.isEmpty())
+                        .collect(java.util.stream.Collectors.joining("  "));
+                if (!cols.isEmpty()) sb.append(cols).append("\n");
+                continue;
+            }
+            // 标题：去掉 #
+            trimmed = trimmed.replaceAll("^#{1,6}\\s*", "");
+            // 粗体/斜体
+            trimmed = trimmed.replaceAll("\\*\\*(.+?)\\*\\*", "$1").replaceAll("\\*(.+?)\\*", "$1");
+            // 引用
+            trimmed = trimmed.replaceAll("^>\\s*", "");
+            // 列表
+            trimmed = trimmed.replaceAll("^[*\\-]\\s+", "• ");
+            sb.append(trimmed).append("\n");
+        }
+        return sb.toString().replaceAll("\n{3,}", "\n\n").trim();
     }
 
     private List<String> splitByByteLength(String text, int maxBytes) {

@@ -916,7 +916,7 @@ public class MilvusUtils {
 //                    } catch (SocketTimeoutException e) {
 //                        result.put("text", "连接超时，请稍后再试");
 //                    }
-                    modelText = aiModelUtils.callWithMessageWithImgNoMarkdown(rewriteQuestion, files, resultText.toString(), new ArrayList<>());
+                    modelText = aiModelUtils.callWithMessageWithImg(rewriteQuestion, (files != null && !files.isEmpty()) ? files.get(0) : null, resultText.toString(), new ArrayList<>());
                     result.put("rewriteQuestion",rewriteQuestion);
                     if (!"".equals(modelText)) {
                         result.put("title", String.join(",", titles));

@@ -1015,7 +1015,9 @@ public class AiModelUtils {
                 messages.add(system);
                 JSONObject user = new JSONObject();
                 user.put("role", "user");
-                user.put("content", "新问题是" + question + ",过去提问的问题是" + historyQuestion);
+                user.put("content", "新问题：" + question + "\n历史问题：" + historyQuestion
+                        + "\n\n请判断：如果新问题与历史问题完全无关（是全新话题），直接原样输出新问题，不做任何修改；"
+                        + "如果新问题是对历史问题的追问或延伸，则结合历史问题改写新问题使其语义完整，只输出改写后的问题。");
                 messages.add(user);
 
                 input.put("messages", messages);
