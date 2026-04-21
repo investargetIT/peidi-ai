@@ -840,9 +840,7 @@ public class MilvusUtils {
                 if(null != filterReportType){
                     filter.append(" and reportType == \"").append(filterReportType).append("\"");
                 }
-                if(null != filterReportType){
-                    filter.append(" and reportType == \"").append(filterReportType).append("\"");
-                }
+
                 SearchResp searchResp = client.search(SearchReq.builder()
                         .collectionName(collectionName)
                         .filter(filter.toString())
