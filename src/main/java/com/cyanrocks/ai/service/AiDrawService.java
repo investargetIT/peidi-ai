@@ -19,12 +19,14 @@ import com.cyanrocks.ai.utils.SearchSqlUtils;
 import com.cyanrocks.ai.utils.rabbitmq.RabbitMQConfig;
 import com.cyanrocks.ai.vo.request.SearchReq;
 import com.cyanrocks.ai.vo.request.SortReq;
+import okhttp3.OkHttpClient;
 import okio.BufferedSource;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import okhttp3.*;
@@ -35,7 +37,6 @@ import java.io.IOException;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
 
 
 /**
@@ -56,6 +57,17 @@ public class AiDrawService extends ServiceImpl<AiDrawMapper, AiDraw> {
     private String apiKeyTest;
     @Value("${dashscope.api-key}")
     private String dashscopeApiKey;
+    @Value("${qnaigc.api-key}")
+    private String qnaigcApiKey;
+
+    @Autowired
+    @Qualifier("okHttpClient")
+    private OkHttpClient okHttpClient;
+
+    @Autowired
+    @Qualifier("okHttpClientShort")
+    private OkHttpClient okHttpClientShort;
+
     @Autowired
     private OssUtils ossUtils;
     @Autowired
@@ -214,12 +226,7 @@ public class AiDrawService extends ServiceImpl<AiDrawMapper, AiDraw> {
                 .addHeader("Authorization", "Bearer " + apiKey)
                 .addHeader("Content-Type", "application/json")
                 .build();
-        OkHttpClient client = new OkHttpClient.Builder()
-                .connectTimeout(600, TimeUnit.SECONDS)
-                .writeTimeout(600, TimeUnit.SECONDS)
-                .readTimeout(600, TimeUnit.SECONDS)
-                .build();
-        try (Response response = client.newCall(request).execute()) {
+        try (Response response = okHttpClient.newCall(request).execute()) {
             if (!response.isSuccessful()) {
                 throw new IOException("HTTP error! status: " + response.code());
             }
@@ -268,8 +275,6 @@ public class AiDrawService extends ServiceImpl<AiDrawMapper, AiDraw> {
                 }
             }
             return imageUrls;
-        }finally {
-            client.clone();
         }
     }
 
@@ -281,12 +286,7 @@ public class AiDrawService extends ServiceImpl<AiDrawMapper, AiDraw> {
                 .addHeader("Authorization", "Bearer " + apiKeyTest)
                 .addHeader("Content-Type", "application/json")
                 .build();
-        OkHttpClient client = new OkHttpClient.Builder()
-                .connectTimeout(600, TimeUnit.SECONDS)
-                .writeTimeout(600, TimeUnit.SECONDS)
-                .readTimeout(600, TimeUnit.SECONDS)
-                .build();
-        try (Response response = client.newCall(request).execute()) {
+        try (Response response = okHttpClient.newCall(request).execute()) {
             if (!response.isSuccessful()) {
                 throw new IOException("HTTP error! status: " + response.code());
             }
@@ -326,27 +326,19 @@ public class AiDrawService extends ServiceImpl<AiDrawMapper, AiDraw> {
             }
         } catch (Exception e) {
             throw new BusinessException(500, " failed: " + e.getMessage());
-        } finally {
-            client.clone();
         }
         return parseResult.toString();
     }
 
     public String transferAliyun(String jsonParams) {
         String apiUrl = "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation";
-        OkHttpClient client = new OkHttpClient.Builder()
-                .connectTimeout(600, TimeUnit.SECONDS)
-                .writeTimeout(600, TimeUnit.SECONDS)
-                .readTimeout(600, TimeUnit.SECONDS)
-                .build();
-        // 同步调用
         Request request = new Request.Builder()
                 .url(apiUrl)
                 .post(RequestBody.create(jsonParams, JSON))
                 .addHeader("Authorization", "Bearer " + dashscopeApiKey)
                 .addHeader("Content-Type", "application/json")
                 .build();
-        try (Response response = client.newCall(request).execute()) {
+        try (Response response = okHttpClient.newCall(request).execute()) {
             if (!response.isSuccessful()) {
                 String errBody = response.body() != null ? response.body().string() : "";
                 throw new BusinessException(500, "Aliyun API error: " + response.code() + " " + errBody);
@@ -374,6 +366,35 @@ public class AiDrawService extends ServiceImpl<AiDrawMapper, AiDraw> {
         }
     }
 
+    public String transferQnaigc(String jsonParams) {
+        String apiUrl = "https://api.qnaigc.com/v1/images/edits";
+        Request request = new Request.Builder()
+                .url(apiUrl)
+                .post(RequestBody.create(jsonParams, JSON))
+                .addHeader("Authorization", "Bearer " + qnaigcApiKey)
+                .addHeader("Content-Type", "application/json")
+                .build();
+        try (Response response = okHttpClient.newCall(request).execute()) {
+            if (!response.isSuccessful()) {
+                String errBody = response.body() != null ? response.body().string() : "";
+                throw new BusinessException(500, "Qnaigc API error: " + response.code() + " " + errBody);
+            }
+            String body = response.body().string();
+
+            log.info("Qnaigc response: {}", body);
+            JsonNode root = objectMapper.readTree(body);
+            JsonNode data = root.path("data");
+            if(data.isArray() && data.size() > 0){
+                return root.path("data").toString();
+            }
+            throw new BusinessException(500, "No image in response: " + body);
+        } catch (BusinessException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new BusinessException(500, "transferQnaigc error: " + e.getMessage());
+        }
+    }
+
     private List<byte[]> downloadImages(List<String> urls) throws IOException {
         List<byte[]> list = new ArrayList<>();
         for (String url : urls) {
@@ -385,12 +406,7 @@ public class AiDrawService extends ServiceImpl<AiDrawMapper, AiDraw> {
 
     private byte[] downloadImage(String imageUrl) throws IOException {
         Request request = new Request.Builder().url(imageUrl).build();
-        OkHttpClient client = new OkHttpClient.Builder()
-                .connectTimeout(300, TimeUnit.SECONDS)
-                .writeTimeout(300, TimeUnit.SECONDS)
-                .readTimeout(300, TimeUnit.SECONDS)
-                .build();
-        try (Response response = client.newCall(request).execute()) {
+        try (Response response = okHttpClientShort.newCall(request).execute()) {
             if (!response.isSuccessful()) {
                 throw new IOException("下载图片失败: " + response.code() + ", URL: " + imageUrl);
             }
@@ -399,8 +415,6 @@ public class AiDrawService extends ServiceImpl<AiDrawMapper, AiDraw> {
                 throw new IOException("图片响应体为空: " + imageUrl);
             }
             return body.bytes();
-        }finally {
-            client.clone();
         }
     }
 
