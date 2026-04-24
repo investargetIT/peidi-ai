@@ -167,7 +167,7 @@ public class RabbitConsumer {
                 question = question.replace("@佩蒂问问","").trim();
             }
             Map<String, String> searchResult = milvusUtils.semanticSearch2(question, null, "pdf_markdown"
-                    , sMsgObject.getJSONObject("from").getString("userid"), "AAT孵化项目组");
+                    , sMsgObject.getJSONObject("from").getString("userid"), "AAT孵化项目组","callWithMessageWithImg");
 
             CloseableHttpClient httpClient = HttpClients.createDefault();
             HttpPost httpPost = new HttpPost(sMsgObject.getString("response_url").trim());
@@ -274,7 +274,7 @@ public class RabbitConsumer {
             }
             System.out.println("下载成功"+files.size()+"张图片");
             Map<String, String> searchResult = milvusUtils.semanticSearch3(question, files, "pdf_markdown"
-                    , rabbitObject.getString("touser"), "AAT孵化项目组");
+                    , rabbitObject.getString("touser"), "AAT孵化项目组","callWithMessageWithImg");
 
             CloseableHttpClient httpClient = HttpClients.createDefault();
             HttpPost sendPost = new HttpPost("https://qyapi.weixin.qq.com/cgi-bin/kf/send_msg?access_token="+token);

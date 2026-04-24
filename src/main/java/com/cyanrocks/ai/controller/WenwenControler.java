@@ -214,7 +214,7 @@ public class WenwenControler {
                     String question = sMsgObject.getJSONObject("text").getString("content");
                     question = question.replace("@佩蒂问问", "").trim();
                     Map<String, String> searchResult = milvusUtils.semanticSearch2(question, null, "pdf_markdown",
-                            sMsgObject.getJSONObject("from").getString("userid"), "AAT孵化项目组");
+                            sMsgObject.getJSONObject("from").getString("userid"), "AAT孵化项目组","callWithMessageWithImg");
 
                     CloseableHttpClient httpClient = HttpClients.createDefault();
                     HttpPost httpPost = new HttpPost(sMsgObject.getString("response_url").trim());

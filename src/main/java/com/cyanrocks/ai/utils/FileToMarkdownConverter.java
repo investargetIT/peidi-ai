@@ -341,7 +341,7 @@ public class FileToMarkdownConverter {
 
                 // 使用FastJSON构建请求体
                 JSONObject requestBody = new JSONObject();
-                AiModel aiModel = aiModelMapper.selectOne(Wrappers.<AiModel>lambdaQuery().eq(AiModel::getType, "processPageWithQwen").eq(AiModel::getActive, true));
+                AiModel aiModel = aiModelMapper.selectOne(Wrappers.<AiModel>lambdaQuery().eq(AiModel::getType, "processPageWithQwen").eq(AiModel::getActive, 1));
 
                 requestBody.put("model", aiModel.getModelName());
 

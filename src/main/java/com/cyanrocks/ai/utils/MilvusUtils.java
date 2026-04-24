@@ -494,7 +494,8 @@ public class MilvusUtils {
     }
 
     //纯向量查询
-    public Map<String, String> semanticSearch2(String que, MultipartFile file, String collectionName, String dingId, String filterReportType){
+    public Map<String, String> semanticSearch2(String que, MultipartFile file, String collectionName, String dingId, String filterReportType, String type) {
+        System.out.println("进入semanticSearch2 +。。。"+type);
         String question = que.trim().replace("\r", "").replace("\n", "");
         String rewriteQuestion = "";
         //纯向量
@@ -549,7 +550,7 @@ public class MilvusUtils {
                         .reduce((a, b) -> a + " or " + b)
                         .orElse(""));
                 filter.append(")");
-                if(null != filterReportType){
+                if (null != filterReportType) {
                     filter.append(" and reportType == \"").append(filterReportType).append("\"");
                 }
                 QueryReq queryReq = QueryReq.builder()
@@ -615,10 +616,10 @@ public class MilvusUtils {
                 Map<String, Object> searchParams = new HashMap<>();
                 searchParams.put("nprobe", 10);
                 StringBuilder filter = new StringBuilder("(visibility == \"all\" or visibility like \"%" + dingId + "%\")");
-                if(null != filterReportType){
+                if (null != filterReportType) {
                     filter.append(" and reportType == \"").append(filterReportType).append("\"");
                 }
-                if(null != filterReportType){
+                if (null != filterReportType) {
                     filter.append(" and reportType == \"").append(filterReportType).append("\"");
                 }
                 SearchResp searchResp = client.search(SearchReq.builder()
@@ -719,8 +720,9 @@ public class MilvusUtils {
 //                    } catch (SocketTimeoutException e) {
 //                        result.put("text", "连接超时，请稍后再试");
 //                    }
-                    modelText = aiModelUtils.callWithMessageWithImg(rewriteQuestion, file, resultText.toString(), new ArrayList<>());
-                    result.put("rewriteQuestion",rewriteQuestion);
+
+                    modelText = aiModelUtils.callWithMessageWithImg(rewriteQuestion, file, resultText.toString(), new ArrayList<>(), type);
+                    result.put("rewriteQuestion", rewriteQuestion);
                     if (!"".equals(modelText)) {
                         if (modelText.contains("#参考资料#")) {
                             result.put("text", modelText.split("#参考资料#")[0]);
@@ -800,7 +802,7 @@ public class MilvusUtils {
         return null;
     }
 
-    public Map<String, String> semanticSearch3(String que, List<MultipartFile> files, String collectionName, String dingId, String filterReportType){
+    public Map<String, String> semanticSearch3(String que, List<MultipartFile> files, String collectionName, String dingId, String filterReportType, String type){
         String question = que.trim().replace("\r", "").replace("\n", "");
         String rewriteQuestion = "";
         //纯向量
@@ -914,7 +916,7 @@ public class MilvusUtils {
 //                    } catch (SocketTimeoutException e) {
 //                        result.put("text", "连接超时，请稍后再试");
 //                    }
-                    modelText = aiModelUtils.callWithMessageWithImg(rewriteQuestion, (files != null && !files.isEmpty()) ? files.get(0) : null, resultText.toString(), new ArrayList<>());
+                    modelText = aiModelUtils.callWithMessageWithImg(rewriteQuestion, (files != null && !files.isEmpty()) ? files.get(0) : null, resultText.toString(), new ArrayList<>(),type);
                     result.put("rewriteQuestion",rewriteQuestion);
                     if (!"".equals(modelText)) {
                         result.put("title", String.join(",", titles));

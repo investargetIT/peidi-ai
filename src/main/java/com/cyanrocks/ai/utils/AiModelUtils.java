@@ -2,6 +2,7 @@ package com.cyanrocks.ai.utils;
 
 import cn.hutool.core.collection.CollectionUtil;
 import cn.hutool.json.JSONUtil;
+import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
@@ -618,9 +619,9 @@ public class AiModelUtils {
     }
 
 
-    public String callWithMessageWithImg(String question, MultipartFile file, String text, List<AiQueryHistory> historyList) {
+    public String callWithMessageWithImg(String question, MultipartFile file, String text, List<AiQueryHistory> historyList,String type) {
         final int MAX_RETRIES = 3;
-        AiModel aiModel = aiModelMapper.selectOne(Wrappers.<AiModel>lambdaQuery().eq(AiModel::getType, "callWithMessageWithImg").eq(AiModel::getActive, true));
+        AiModel aiModel = aiModelMapper.selectOne(Wrappers.<AiModel>lambdaQuery().eq(AiModel::getType, type).eq(AiModel::getActive, true));
         for (int attempt = 0; attempt < MAX_RETRIES; attempt++) {
             StringBuilder parseResult = new StringBuilder();
             try {
@@ -743,7 +744,8 @@ public class AiModelUtils {
     }
 
     public String callWithMessageWithImgNoMarkdown(String question, List<MultipartFile> files, String text, List<AiQueryHistory> historyList) {
-        System.out.println("接收到"+files.size()+"张图片");
+
+        System.out.println("接收到" + files.size() + "张图片");
         final int MAX_RETRIES = 3;
         AiModel aiModel = aiModelMapper.selectOne(Wrappers.<AiModel>lambdaQuery().eq(AiModel::getType, "callWithMessageWithImgNoMarkdown").eq(AiModel::getActive, true));
         for (int attempt = 0; attempt < MAX_RETRIES; attempt++) {
@@ -816,7 +818,7 @@ public class AiModelUtils {
                         } catch (IOException e) {
                             // 继续处理其他图片，不中断整体流程
                         }
-                        System.out.println("添加"+imgCnt+"张照片");
+                        System.out.println("添加" + imgCnt + "张照片");
                     }
                 }
                 JSONObject userMessage = new JSONObject();
@@ -858,7 +860,7 @@ public class AiModelUtils {
 
                             if (line.startsWith("data: ")) {
                                 String dataStr = line.substring(6).trim();
-                                System.out.println("dataStr:"+dataStr);
+                                System.out.println("dataStr:" + dataStr);
                                 if (!dataStr.isEmpty()) {
                                     try {
                                         ObjectMapper objectMapper = new ObjectMapper();
@@ -888,11 +890,11 @@ public class AiModelUtils {
             } catch (Exception e) {
                 System.err.println("Unexpected error on attempt " + (attempt + 1) + ": " + e.getMessage());
             }
-            if (StringUtils.isNotEmpty(parseResult)){
-                if (parseResult.toString().contains("<think>") && parseResult.toString().contains("</think>")){
+            if (StringUtils.isNotEmpty(parseResult)) {
+                if (parseResult.toString().contains("<think>") && parseResult.toString().contains("</think>")) {
                     return parseResult.toString().replaceAll("(?si)<think>.*?</think>", "");
                 }
-                if (!parseResult.toString().contains("<think>")){
+                if (!parseResult.toString().contains("<think>")) {
                     return parseResult.toString();
                 }
             }

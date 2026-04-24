@@ -42,7 +42,7 @@ public class MilvusController {
     @ApiOperation(value = "佩蒂问问查询问题")
     public Map<String, String> pdfQuestion(@RequestParam("question") String question,
                                            @RequestParam(value = "file",required = false) MultipartFile file){
-        return milvusUtils.semanticSearch2(question, file, "pdf_markdown", "03365042031527679493",null);
+        return milvusUtils.semanticSearch2(question, file, "pdf_markdown", "03365042031527679493",null,"callWithMessageWithImg");
     }
 
     @GetMapping("/page")
