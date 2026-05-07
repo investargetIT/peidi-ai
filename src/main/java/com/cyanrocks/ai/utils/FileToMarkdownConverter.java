@@ -58,7 +58,7 @@ public class FileToMarkdownConverter {
 
     private static final Logger logger = Logger.getLogger(FileToMarkdownConverter.class.getName());
     private static final String DASHSCOPE_API_KEY = "";
-//    private static final String DASHSCOPE_API_KEY = "sk-17ec61d83bba433f8acb638aeced5ab8";
+
     private static final String API_URL = "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation";
     private static final String MODEL_NAME = "qwen2.5-vl-72b-instruct";
 
