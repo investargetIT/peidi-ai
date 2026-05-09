@@ -40,33 +40,33 @@ public class GbiAccessTokenService {
      */
     @PostConstruct
     public void init() throws Exception {
-        if (Objects.isNull(clientId)) {
-            throw new RuntimeException("please set dingtalk.app.client-id=xxx");
-        }
-
-        if (Objects.isNull(clientSecret)) {
-            throw new RuntimeException("please set dingtalk.app.client-secret=xxx");
-        }
-
-        com.aliyun.teaopenapi.models.Config config = new com.aliyun.teaopenapi.models.Config();
-        config.protocol = "https";
-        config.regionId = "central";
-        auth2Client = new Client(config);
-
-        // 重试三次如果失败，应用启动不成功，否则启动无意义
-        int maxTryTimes = 3;
-        while (maxTryTimes-- > 0) {
-            if (refreshAccessToken()) {
-                break;
-            }
-
-            Thread.sleep(100);
-        }
-
-        if (maxTryTimes <= 0) {
-            throw new RuntimeException(
-                    "fail to get accessToken from remote, try 3 times, please check your clientId and clientSecret");
-        }
+//        if (Objects.isNull(clientId)) {
+//            throw new RuntimeException("please set dingtalk.app.client-id=xxx");
+//        }
+//
+//        if (Objects.isNull(clientSecret)) {
+//            throw new RuntimeException("please set dingtalk.app.client-secret=xxx");
+//        }
+//
+//        com.aliyun.teaopenapi.models.Config config = new com.aliyun.teaopenapi.models.Config();
+//        config.protocol = "https";
+//        config.regionId = "central";
+//        auth2Client = new Client(config);
+//
+//        // 重试三次如果失败，应用启动不成功，否则启动无意义
+//        int maxTryTimes = 3;
+//        while (maxTryTimes-- > 0) {
+//            if (refreshAccessToken()) {
+//                break;
+//            }
+//
+//            Thread.sleep(100);
+//        }
+//
+//        if (maxTryTimes <= 0) {
+//            throw new RuntimeException(
+//                    "fail to get accessToken from remote, try 3 times, please check your clientId and clientSecret");
+//        }
     }
 
     /**
@@ -74,19 +74,19 @@ public class GbiAccessTokenService {
      */
     @Scheduled(fixedRate = 600 * 1000)
     public void checkAccessToken() {
-        System.out.println("checkAccessToken");
-        if (Objects.isNull(accessToken)) {
-            return;
-        }
-
-        // check before expired in 10 minutes
-        long advanceCheckTime = 600L;
-        if (accessToken.expireTimestamp - System.currentTimeMillis() > advanceCheckTime * 1000L) {
-            System.out.println("expireTimestamp:"+accessToken.expireTimestamp+" system:" + System.currentTimeMillis() + " advanceCheckTime" + advanceCheckTime);
-            return;
-        }
-
-        refreshAccessToken();
+//        System.out.println("checkAccessToken");
+//        if (Objects.isNull(accessToken)) {
+//            return;
+//        }
+//
+//        // check before expired in 10 minutes
+//        long advanceCheckTime = 600L;
+//        if (accessToken.expireTimestamp - System.currentTimeMillis() > advanceCheckTime * 1000L) {
+//            System.out.println("expireTimestamp:"+accessToken.expireTimestamp+" system:" + System.currentTimeMillis() + " advanceCheckTime" + advanceCheckTime);
+//            return;
+//        }
+//
+//        refreshAccessToken();
     }
 
     public Boolean refreshAccessToken() {

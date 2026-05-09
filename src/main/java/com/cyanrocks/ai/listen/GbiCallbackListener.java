@@ -18,12 +18,12 @@ public class GbiCallbackListener {
     @Value("${dingtalk.app.client-secret}")
     private String clientSecret;
 
-    @Bean(initMethod = "start")
-    public OpenDingTalkClient configureStreamClientGbi(@Autowired GbiCallbackService gbiCallbackService) throws Exception {
-        // init stream client
-        return OpenDingTalkStreamClientBuilder.custom()
-                .credential(new AuthClientCredential(clientId, clientSecret))
-                //注册机器人回调
-                .registerCallbackListener(DingTalkStreamTopics.CARD_CALLBACK_TOPIC, gbiCallbackService).build();
-    }
+//    @Bean(initMethod = "start")
+//    public OpenDingTalkClient configureStreamClientGbi(@Autowired GbiCallbackService gbiCallbackService) throws Exception {
+//        // init stream client
+//        return OpenDingTalkStreamClientBuilder.custom()
+//                .credential(new AuthClientCredential(clientId, clientSecret))
+//                //注册机器人回调
+//                .registerCallbackListener(DingTalkStreamTopics.CARD_CALLBACK_TOPIC, gbiCallbackService).build();
+//    }
 }
