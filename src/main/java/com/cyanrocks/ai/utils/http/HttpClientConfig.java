@@ -1,5 +1,6 @@
 package com.cyanrocks.ai.utils.http;
 
+import okhttp3.OkHttpClient;
 import org.apache.http.client.config.RequestConfig;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.DefaultHttpRequestRetryHandler;
@@ -10,6 +11,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.PropertySource;
+
+import java.util.concurrent.TimeUnit;
 
 @Configuration
 @PropertySource(value = "classpath:/httpClient.properties")
@@ -101,5 +104,29 @@ public class HttpClientConfig {
     @Bean(name = "requestConfig")
     public RequestConfig getRequestConfig(@Qualifier("builder") RequestConfig.Builder builder) {
         return builder.build();
+    }
+
+    // OkHttpClient 配置 - 用于 AI 绘图等长耗时请求
+    @Bean(name = "okHttpClient")
+    public OkHttpClient okHttpClient() {
+        return new OkHttpClient.Builder()
+                .connectTimeout(600, TimeUnit.SECONDS)
+                .writeTimeout(600, TimeUnit.SECONDS)
+                .readTimeout(600, TimeUnit.SECONDS)
+                .connectionPool(new okhttp3.ConnectionPool(5, 5, TimeUnit.MINUTES))
+                .retryOnConnectionFailure(true)
+                .build();
+    }
+
+    // OkHttpClient 配置 - 用于普通短耗时请求
+    @Bean(name = "okHttpClientShort")
+    public OkHttpClient okHttpClientShort() {
+        return new OkHttpClient.Builder()
+                .connectTimeout(30, TimeUnit.SECONDS)
+                .writeTimeout(30, TimeUnit.SECONDS)
+                .readTimeout(30, TimeUnit.SECONDS)
+                .connectionPool(new okhttp3.ConnectionPool(5, 5, TimeUnit.MINUTES))
+                .retryOnConnectionFailure(true)
+                .build();
     }
 }

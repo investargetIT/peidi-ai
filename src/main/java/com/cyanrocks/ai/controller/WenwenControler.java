@@ -37,6 +37,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * @Author wjq
@@ -180,22 +181,87 @@ public class WenwenControler {
                 }
                 return "";
             }
+            // WeChat stream 状态轮询回调，回复 finish=true 终止会话
+            if ("stream".equals(JSONObject.parseObject(sMsg).getString("msgtype"))) {
+                JSONObject streamAck = new JSONObject();
+                streamAck.put("msgtype", "stream");
+                JSONObject streamAckBody = new JSONObject();
+                JSONObject streamField = JSONObject.parseObject(sMsg).getJSONObject("stream");
+                streamAckBody.put("id", streamField != null ? streamField.getString("id") : UUID.randomUUID().toString());
+                streamAckBody.put("finish", true);
+                streamAckBody.put("content", "");
+                streamAck.put("stream", streamAckBody);
+                return wxcpt.EncryptMsg(JSONObject.toJSONString(streamAck), timestamp, nonce);
+            }
             //没有文本输入，为第一次进入私聊框。直接返回
             if (null == JSONObject.parseObject(sMsg).get("text")){
                 return "";
             }
 
-            //消息发送到rebbitMq中
-            JSONObject rabbit = new JSONObject();
-            rabbit.put("sMsg", sMsg);
-            rabbitTemplate.convertAndSend(RabbitMQConfig.WECOM_PROCESS_QUEUE, JSONObject.toJSONString(rabbit));
+            String chattype = JSONObject.parseObject(sMsg).getString("chattype");
+            String rawText = JSONObject.parseObject(sMsg).getJSONObject("text").getString("content");
+            System.out.println("chattype: " + chattype + ", received text: " + rawText);
 
-            // 立即回复
+            // 私聊直接回复提示
+            if ("single".equals(chattype)) {
+                JSONObject singleReply = new JSONObject();
+                singleReply.put("msgtype", "markdown");
+                JSONObject singleMarkdown = new JSONObject();
+                singleMarkdown.put("content", "本助手仅支持群聊场景使用");
+                singleReply.put("markdown", singleMarkdown);
+                return wxcpt.EncryptMsg(JSONObject.toJSONString(singleReply), timestamp, nonce);
+            }
+
+            // 群聊未 @佩蒂问问，静默忽略
+            if (rawText == null || !rawText.contains("@佩蒂问问")) {
+                JSONObject ignoreReply = new JSONObject();
+                ignoreReply.put("msgtype", "stream");
+                JSONObject ignoreStream = new JSONObject();
+                ignoreStream.put("id", UUID.randomUUID().toString());
+                ignoreStream.put("finish", true);
+                ignoreStream.put("content", "");
+                ignoreReply.put("stream", ignoreStream);
+                return wxcpt.EncryptMsg(JSONObject.toJSONString(ignoreReply), timestamp, nonce);
+            }
+
+            // 异步处理群聊 @mention 消息
+            final String sMsgFinal = sMsg;
+            CompletableFuture.runAsync(() -> {
+                try {
+                    JSONObject sMsgObject = JSONObject.parseObject(sMsgFinal);
+                    String question = sMsgObject.getJSONObject("text").getString("content");
+                    question = question.replace("@佩蒂问问", "").trim();
+                    Map<String, String> searchResult = milvusUtils.semanticSearch2(question, null, "pdf_markdown",
+                            sMsgObject.getJSONObject("from").getString("userid"), "AAT孵化项目组","callWithMessageWithImg");
+
+                    CloseableHttpClient httpClient = HttpClients.createDefault();
+                    HttpPost httpPost = new HttpPost(sMsgObject.getString("response_url").trim());
+                    httpPost.setHeader("Content-Type", "application/json");
+
+                    JSONObject msgBody = new JSONObject();
+                    msgBody.put("msgtype", "markdown");
+                    JSONObject markdown = new JSONObject();
+                    String result = searchResult.get("text") == null ? "请稍后再试" : searchResult.get("text");
+                    markdown.put("content", result);
+                    markdown.put("feedback", new JSONObject().fluentPut("id", searchResult.get("id")));
+                    msgBody.put("markdown", markdown);
+
+                    httpPost.setEntity(new StringEntity(JSONObject.toJSONString(msgBody), ContentType.APPLICATION_JSON));
+                    try (CloseableHttpResponse response = httpClient.execute(httpPost)) {
+                        String responseBody = EntityUtils.toString(response.getEntity(), "UTF-8");
+                        System.out.println("WeChat Response: " + responseBody);
+                    }
+                } catch (Exception e) {
+                    System.err.println("群聊异步处理失败: " + e.getMessage());
+                }
+            });
+
+            // 立即回复，finish=false 保持会话开放以便后续 response_url 推送
             JSONObject firstReply = new JSONObject();
             firstReply.put("msgtype", "stream");
             JSONObject stream = new JSONObject();
             stream.put("id", UUID.randomUUID().toString());
-            stream.put("finish", true);
+            stream.put("finish", false);
             stream.put("content", "正在查询中，请稍候...");
             firstReply.put("stream", stream);
 
@@ -388,10 +454,10 @@ public class WenwenControler {
                     }
                 }
 
-                //组装消息发送到rebbitMq中
-                sendReq.put("que",content);
-                sendReq.put("imgList",JSONObject.toJSONString(imgList));
-                System.out.println("接收到"+imgList.size()+"张图片");
+                //组装消息发送到rabbitMq中
+                sendReq.put("que", content);
+                sendReq.put("imgList", JSONObject.toJSONString(imgList));
+                System.out.println("接收到" + imgList.size() + "张图片");
                 rabbitTemplate.convertAndSend(RabbitMQConfig.KEFU_PROCESS_QUEUE, JSONObject.toJSONString(sendReq));
             }
 

@@ -81,15 +81,6 @@ public class RabbitConsumer {
     private static final String REDIS_KEY = "kefu:wechat:token";
 
 
-    /**
-     * Process a single PDF chunk: write the chunk to a temporary file, invoke the AI model to extract text/markdown,
-     * persist the resulting record into the Milvus collection "pdf_markdown", acknowledge the message on success,
-     * and negatively acknowledge (without requeue) on failure; the temporary file is removed in all cases.
-     *
-     * @param task the PDF chunk task containing the chunk bytes, batch number, original filename and request payload
-     * @param deliveryTag the RabbitMQ delivery tag for the incoming message (used for manual ACK/NACK)
-     * @param channel the RabbitMQ channel used to send ACK or NACK for the message
-     */
     @RabbitListener(queues = "pdf.process.queue", containerFactory = "pdfContainerFactory")
     public void processPdfChunk(PdfChunkTask task, @Header(AmqpHeaders.DELIVERY_TAG) long deliveryTag,
                                 Channel channel) {
@@ -138,11 +129,6 @@ public class RabbitConsumer {
         }
     }
 
-    /**
-     * Processes an AiDraw request by generating images, uploading them to OSS, and updating the AiDraw record with resulting image paths and status.
-     *
-     * @param draw the AiDraw record containing request parameters (UUID, URL params, size, retry settings); this record is updated with the uploaded image list, update timestamp, and status
-     */
     @RabbitListener(queues = "draw.process.queue", containerFactory = "drawContainerFactory")
     public void processDraw(AiDraw draw){
         System.out.println("开始处理 " + draw.getUuid() + " 图片");
@@ -169,19 +155,8 @@ public class RabbitConsumer {
         System.out.println("处理完成 " + draw.getUuid() + " 图片");
     }
 
-    /**
-     * Handles a queued WeCom callback payload: extracts the user question, runs a semantic search against the PDF markdown collection,
-     * and posts a markdown reply to the message's callback URL.
-     *
-     * <p>The posted markdown contains the rewritten question and either the semantic search result text or a fallback message.</p>
-     *
-     * @param rabbit raw JSON payload from the queue; expected to contain an `sMsg` object with:
-     *               - `text.content` (the incoming message text),
-     *               - `from.userid` (the sender id used for semantic search context),
-     *               - `response_url` (the HTTP callback URL to receive the markdown reply)
-     * @throws ListenerExecutionFailedException if parsing, semantic search, HTTP request execution, or response handling fails
-     */
-    @RabbitListener(queues = "wecom.process.queue", containerFactory = "wecomContainerFactory")
+    // wecom 消息已改为 controller 直接异步处理，不再使用 RabbitMQ
+    // @RabbitListener(queues = "wecom.process.queue", containerFactory = "wecomContainerFactory")
     public void processWecom(String rabbit) {
         try {
             JSONObject rabbitObject = JSONObject.parseObject(rabbit);
@@ -192,7 +167,7 @@ public class RabbitConsumer {
                 question = question.replace("@佩蒂问问","").trim();
             }
             Map<String, String> searchResult = milvusUtils.semanticSearch2(question, null, "pdf_markdown"
-                    , sMsgObject.getJSONObject("from").getString("userid"), "AAT孵化项目组");
+                    , sMsgObject.getJSONObject("from").getString("userid"), "AAT孵化项目组","callWithMessageWithImg");
 
             CloseableHttpClient httpClient = HttpClients.createDefault();
             HttpPost httpPost = new HttpPost(sMsgObject.getString("response_url").trim());
@@ -228,14 +203,6 @@ public class RabbitConsumer {
         }
     }
 
-    /**
-     * Process a customer-service (KF) request consumed from the kefu queue: perform a semantic search (optionally using images referenced in the payload), then send one or more WeCom KF text messages back to the specified recipient.
-     *
-     * The method obtains and caches a WeCom access token in Redis as needed, may download media referenced by the payload's image list, invokes semantic search, splits overly long responses into UTF-8 byte-sized segments, and sends each segment as a separate KF message.
-     *
-     * @param rabbit JSON string payload containing at least the following fields: `"que"` (the question text), `"imgList"` (array of WeCom media IDs, optional), `"touser"` (recipient), and `"open_kfid"` (KF account id)
-     * @throws ListenerExecutionFailedException if processing fails (e.g., token retrieval, image download, semantic search, or sending messages)
-     */
     @RabbitListener(queues = "kefu.process.queue", containerFactory = "kefuContainerFactory")
     public void processKefu(String rabbit) {
         try {
@@ -307,7 +274,7 @@ public class RabbitConsumer {
             }
             System.out.println("下载成功"+files.size()+"张图片");
             Map<String, String> searchResult = milvusUtils.semanticSearch3(question, files, "pdf_markdown"
-                    , rabbitObject.getString("touser"), "AAT孵化项目组");
+                    , rabbitObject.getString("touser"), "AAT孵化项目组","callWithMessageWithImg");
 
             CloseableHttpClient httpClient = HttpClients.createDefault();
             HttpPost sendPost = new HttpPost("https://qyapi.weixin.qq.com/cgi-bin/kf/send_msg?access_token="+token);
@@ -316,8 +283,8 @@ public class RabbitConsumer {
             sendReq.put("touser", rabbitObject.getString("touser"));
             sendReq.put("open_kfid", rabbitObject.get("open_kfid"));
             sendReq.put("msgtype", "text");
-            String result = searchResult.get("text") == null ? "实在抱歉，这个问题超出我的解答范围啦，麻烦你移步项目群咨询项目辅导员，他们会及时为你答疑的～" : searchResult.get("text");
-            String content = "### 你是否在问："+searchResult.get("rewriteQuestion")+"\n"+result;
+            String result = searchResult.get("text") == null ? "本助手仅支持群聊场景使用" : searchResult.get("text");
+            String content = stripMarkdown(result);
             // 检查是否超长（2048 字节）
             List<String> contentList = new ArrayList<>();
             byte[] contentBytes = content.getBytes(StandardCharsets.UTF_8);
@@ -356,15 +323,36 @@ public class RabbitConsumer {
         }
     }
 
-    /**
-     * Split a string into segments whose UTF-8 encoded byte length does not exceed the specified maximum.
-     *
-     * Segments preserve character boundaries (no character is split across segments).
-     *
-     * @param text the input string to split; if null or empty an empty list is returned
-     * @param maxBytes the maximum allowed UTF-8 byte length per segment (must be > 0 for meaningful results)
-     * @return a list of string segments where each segment's UTF-8 byte length is ≤ maxBytes; returns an empty list if the input is null or empty
-     */
+    private String stripMarkdown(String text) {
+        if (text == null) return null;
+        String[] lines = text.replaceAll("<br\\s*/?>", "\n").split("\n");
+        StringBuilder sb = new StringBuilder();
+        for (String line : lines) {
+            String trimmed = line.trim();
+            // 跳过表格分隔行
+            if (trimmed.matches("^[|:\\- ]+$")) continue;
+            // 表格行：去掉 | 分隔符，用空格连接各列
+            if (trimmed.startsWith("|") && trimmed.endsWith("|")) {
+                String row = trimmed.substring(1, trimmed.length() - 1);
+                String cols = java.util.Arrays.stream(row.split("\\|"))
+                        .map(String::trim).filter(s -> !s.isEmpty())
+                        .collect(java.util.stream.Collectors.joining("  "));
+                if (!cols.isEmpty()) sb.append(cols).append("\n");
+                continue;
+            }
+            // 标题：去掉 #
+            trimmed = trimmed.replaceAll("^#{1,6}\\s*", "");
+            // 粗体/斜体
+            trimmed = trimmed.replaceAll("\\*\\*(.+?)\\*\\*", "$1").replaceAll("\\*(.+?)\\*", "$1");
+            // 引用
+            trimmed = trimmed.replaceAll("^>\\s*", "");
+            // 列表
+            trimmed = trimmed.replaceAll("^[*\\-]\\s+", "• ");
+            sb.append(trimmed).append("\n");
+        }
+        return sb.toString().replaceAll("\n{3,}", "\n\n").trim();
+    }
+
     private List<String> splitByByteLength(String text, int maxBytes) {
         if (text == null || text.isEmpty()) {
             return new ArrayList<>();
@@ -394,12 +382,6 @@ public class RabbitConsumer {
         return parts;
     }
 
-    /**
-     * Map an image MIME content type to a filename extension.
-     *
-     * @param contentType the MIME type of the image (e.g., "image/png"); may be null
-     * @return the corresponding file extension including the leading dot (e.g., ".png"); returns ".jpg" for null or unknown types
-     */
     private String getFileExtension(String contentType) {
         if (contentType == null) return ".jpg";
 

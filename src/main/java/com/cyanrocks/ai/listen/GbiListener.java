@@ -25,11 +25,11 @@ public class GbiListener {
     @PostConstruct
     public void init() throws Exception {
         // init stream client
-        OpenDingTalkClient client = OpenDingTalkStreamClientBuilder
-                .custom()
-                .credential(new AuthClientCredential(clientId, clientSecret))
-                .registerCallbackListener(DingTalkStreamTopics.BOT_MESSAGE_TOPIC, robotMsgCallbackConsumer)
-                .build();
-        client.start();
+//        OpenDingTalkClient client = OpenDingTalkStreamClientBuilder
+//                .custom()
+//                .credential(new AuthClientCredential(clientId, clientSecret))
+//                .registerCallbackListener(DingTalkStreamTopics.BOT_MESSAGE_TOPIC, robotMsgCallbackConsumer)
+//                .build();
+//        client.start();
     }
 }

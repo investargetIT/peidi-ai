@@ -198,7 +198,8 @@ public class LlmCardManager {
     public void streamCallWithCallback(String query, GbiCardParamBO cardParamBO, Function<GbiCardParamBO, String> streamingFunction, Function<GbiCardParamBO, String> updateFunction, String dingId) throws Exception {
         Map<String, String> result = new HashMap<>();
         try {
-            result = milvusUtils.semanticSearch2(query,null,"pdf_markdown",dingId,null);
+            System.out.println("streamCallWithCallback");
+            result = milvusUtils.semanticSearch2(query,null,"pdf_markdown",dingId,"AAT孵化项目组","callWithMessageWithImgCard");
         }catch (Exception e) {
             cardParamBO.setContent("### 执行结果\n");
             streamingFunction.apply(cardParamBO);

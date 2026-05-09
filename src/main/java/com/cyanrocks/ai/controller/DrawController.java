@@ -1,9 +1,11 @@
 package com.cyanrocks.ai.controller;
 
+import com.aliyun.core.utils.StringUtils;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.cyanrocks.ai.dao.entity.AiDraw;
 import com.cyanrocks.ai.dao.entity.AiDrawMaterials;
 import com.cyanrocks.ai.dao.entity.AiDrawRecord;
+import com.cyanrocks.ai.exception.BusinessException;
 import com.cyanrocks.ai.service.AiDrawService;
 import com.cyanrocks.ai.utils.OssUtils;
 import io.swagger.annotations.Api;
@@ -175,5 +177,22 @@ public class DrawController {
     @ApiOperation(value = "中转gemini模型")
     public String transferGemini(@RequestBody AiDraw aiDraw) throws IOException {
         return aiDrawService.transferGemini(aiDraw.getUrlParam());
+    }
+
+    @PostMapping("/transfer/aliyun")
+    @ApiOperation(value = "中转阿里云百炼wan2.7-image模型")
+    public String transferAliyun(@RequestBody AiDraw aiDraw) {
+        return aiDrawService.transferAliyun(aiDraw.getUrlParam());
+    }
+
+    @PostMapping("/transfer/qnaigc")
+    @ApiOperation(value = "中转qnaigc模型")
+    public String transferQnaigc(@RequestBody AiDraw aiDraw) {
+        // 手动检查
+        if (StringUtils.isBlank(aiDraw.getUrlParam())) {
+            throw new BusinessException(400, "urlParam 不能为空");
+        }
+        return aiDrawService.transferQnaigc(aiDraw.getUrlParam());
+
     }
 }

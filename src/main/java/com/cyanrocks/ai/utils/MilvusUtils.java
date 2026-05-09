@@ -57,15 +57,7 @@ public class MilvusUtils {
     @Value("${milvus.uri}")
     private String milvusUri;
 
-    /**
-     * Generate embeddings for the given PDF markdown records, ensure the specified Milvus collection exists,
-     * and insert the records into that collection in batches; underlying metadata is synchronized to local mappers.
-     *
-     * @param inputList     the list of AiMilvusPdfMarkdown records to process and insert
-     * @param collectionName the target Milvus collection name
-     * @throws Exception    if vector generation, Milvus connection/creation, or batch insertion fails;
-     *                      on write failures a BusinessException(500, "写入数据库失败") is thrown
-     */
+    // 主处理流程
     public void processFileData(List<AiMilvusPdfMarkdown> inputList, String collectionName) throws Exception {
         // 2. 生成向量
         generatePdfReportVectors(inputList);
@@ -110,18 +102,6 @@ public class MilvusUtils {
         }
     }
 
-    /**
-     * Inserts a single GBI table entry into the specified Milvus collection and, if the insert succeeds,
-     * persists corresponding metadata to the local aiGbiTable table.
-     *
-     * The method generates an ID and an embedding from the record's field, writes a single document
-     * (id, field, tableName, vector, searchSql) to Milvus, and on successful insertion stores a metadata
-     * row (including milvusId, tableName, field, searchSql, metedate, createAt) via aiGbiTableMapper.
-     *
-     * @param gbiMilvus     the GBI record containing at least field, tableName, searchSql, and metedate
-     * @param collectionName the name of the Milvus collection to insert into
-     * @throws BusinessException if the target Milvus collection does not exist
-     */
     public void processGbiTable(GbiMilvus gbiMilvus, String collectionName) {
         // 2. 生成向量
         MilvusClientV2 client = null;
@@ -191,16 +171,6 @@ public class MilvusUtils {
         }
     }
 
-    /**
-     * Insert a GBI explanation into the specified Milvus collection and persist its metadata.
-     *
-     * Ensures the collection exists and is loaded, embeds the `gbiExplain` text to produce its vector,
-     * inserts a single record into Milvus, and—when the insert succeeds—writes a corresponding
-     * AiGbiExplain row (including the generated Milvus id and creation timestamp) to the local database.
-     *
-     * @param gbiMilvus      object containing the explanation text (`gbiExplain`) and its `explainType`
-     * @param collectionName the target Milvus collection name
-     */
     public void processGbiExplain(GbiMilvus gbiMilvus, String collectionName) {
         // 2. 生成向量
         MilvusClientV2 client = null;
@@ -266,12 +236,6 @@ public class MilvusUtils {
         }
     }
 
-    /**
-     * Performs a basic connectivity and collection-creation check against Milvus.
-     *
-     * Ensures the configured Milvus collection "chewy_parse_new" exists (creating it if necessary)
-     * and retrieves its load state.
-     */
     public void test() {
         ConnectConfig config = ConnectConfig.builder()
                 .uri(milvusUri)
@@ -305,16 +269,6 @@ public class MilvusUtils {
 //        InsertResp insertResp = client.insert(insertReq);
     }
 
-    /**
-     * Update a PDF markdown record in Milvus by applying the non-null fields from the provided entity.
-     *
-     * The method queries Milvus for the record with the id specified in `req.getMilvusId()` and upserts
-     * an update payload where only non-null properties from `req` overwrite the existing fields.
-     *
-     * @param req        the source entity containing `milvusId` and fields to update; only non-null fields are written
-     * @param collection the Milvus collection name that contains the target record
-     * @return           `true` if the upsert operation affected one or more records, `false` otherwise
-     */
     public boolean updateMilvusPdfMarkdownById(AiMilvusPdfMarkdown req, String collection) {
         ConnectConfig config = ConnectConfig.builder()
                 .uri(milvusUri)
@@ -416,17 +370,6 @@ public class MilvusUtils {
         }
     }
 
-    /**
-     * Update a GBI table entry in the specified Milvus collection using non-null fields from the request.
-     *
-     * For the entity whose id equals req.getMilvusId(), this method updates any provided fields:
-     * tableName, field, searchSql, and metedate. When `field` is provided, the stored vector is
-     * recomputed from that field's embedding before the upsert. The changes are applied via an upsert.
-     *
-     * @param req        an AiGbiTable containing the target `milvusId` and any fields to update (tableName, field, searchSql, metedate)
-     * @param collection the name of the Milvus collection to update
-     * @return           `true` if the upsert affected at least one record, `false` otherwise
-     */
     public boolean updateGbiTableById(AiGbiTable req, String collection) {
         ConnectConfig config = ConnectConfig.builder()
                 .uri(milvusUri)
@@ -480,17 +423,6 @@ public class MilvusUtils {
         }
     }
 
-    /**
-     * Updates a gbi explanation record in Milvus identified by the given entity's Milvus ID.
-     *
-     * If `req.gbiExplain` is provided, the stored `gbiExplain` field is replaced and the `vector`
-     * field is recomputed from the new explanation. If `req.explainType` is provided, the stored
-     * `explainType` field is replaced.
-     *
-     * @param req the AiGbiExplain object containing the Milvus ID and fields to update
-     * @param collection the Milvus collection name where the record resides
-     * @return `true` if one or more records were upserted (updated) in Milvus, `false` otherwise
-     */
     public boolean updateGbiExpainById(AiGbiExplain req, String collection) {
         ConnectConfig config = ConnectConfig.builder()
                 .uri(milvusUri)
@@ -537,13 +469,6 @@ public class MilvusUtils {
         }
     }
 
-    /**
-     * Delete a Milvus entity by its numeric ID from the specified collection.
-     *
-     * @param milvusId  the Milvus entity ID as a decimal string (will be converted to a long)
-     * @param collection the name of the Milvus collection to delete from
-     * @return `true` if at least one entity was deleted, `false` otherwise
-     */
     public boolean deleteMilvusById(String milvusId, String collection) {
         ConnectConfig config = ConnectConfig.builder()
                 .uri(milvusUri)
@@ -568,27 +493,9 @@ public class MilvusUtils {
         }
     }
 
-    /**
-     * Perform a semantic search over the specified Milvus collection, optionally using a file for model context,
-     * and return a compact result map containing matched titles, sources, types, and generated answer text.
-     *
-     * Performs quick scalar fallbacks (report-date and exact-field checks) before running a vector search using
-     * a rewrite of the user question; records the query and result in history.
-     *
-     * @param que the original user query string
-     * @param file an optional file supplied to the downstream model call (used as context for answer generation)
-     * @param collectionName the Milvus collection to search
-     * @param dingId the caller's identifier used for visibility filtering and history association
-     * @param filterReportType when non-null, restricts searches to entries whose reportType equals this value
-     * @return a map of result fields:
-     *         - "title": comma-separated matched document titles (or permission-masked titles),
-     *         - "source": comma-separated sources corresponding to titles,
-     *         - "reportType": comma-separated reportType entries aligned with titles (format may include a title-to-type marker),
-     *         - "text": generated answer or document excerpt selected as the primary response,
-     *         - "rewriteQuestion": the (possibly rewritten) question actually used for vector search,
-     *         - "id": the persisted query history id for this search
-     */
-    public Map<String, String> semanticSearch2(String que, MultipartFile file, String collectionName, String dingId, String filterReportType){
+    //纯向量查询
+    public Map<String, String> semanticSearch2(String que, MultipartFile file, String collectionName, String dingId, String filterReportType, String type) {
+        System.out.println("进入semanticSearch2 +。。。"+type);
         String question = que.trim().replace("\r", "").replace("\n", "");
         String rewriteQuestion = "";
         //纯向量
@@ -643,7 +550,7 @@ public class MilvusUtils {
                         .reduce((a, b) -> a + " or " + b)
                         .orElse(""));
                 filter.append(")");
-                if(null != filterReportType){
+                if (null != filterReportType) {
                     filter.append(" and reportType == \"").append(filterReportType).append("\"");
                 }
                 QueryReq queryReq = QueryReq.builder()
@@ -709,10 +616,10 @@ public class MilvusUtils {
                 Map<String, Object> searchParams = new HashMap<>();
                 searchParams.put("nprobe", 10);
                 StringBuilder filter = new StringBuilder("(visibility == \"all\" or visibility like \"%" + dingId + "%\")");
-                if(null != filterReportType){
+                if (null != filterReportType) {
                     filter.append(" and reportType == \"").append(filterReportType).append("\"");
                 }
-                if(null != filterReportType){
+                if (null != filterReportType) {
                     filter.append(" and reportType == \"").append(filterReportType).append("\"");
                 }
                 SearchResp searchResp = client.search(SearchReq.builder()
@@ -813,8 +720,9 @@ public class MilvusUtils {
 //                    } catch (SocketTimeoutException e) {
 //                        result.put("text", "连接超时，请稍后再试");
 //                    }
-                    modelText = aiModelUtils.callWithMessageWithImg(rewriteQuestion, file, resultText.toString(), new ArrayList<>());
-                    result.put("rewriteQuestion",rewriteQuestion);
+
+                    modelText = aiModelUtils.callWithMessageWithImg(rewriteQuestion, file, resultText.toString(), new ArrayList<>(), type);
+                    result.put("rewriteQuestion", rewriteQuestion);
                     if (!"".equals(modelText)) {
                         if (modelText.contains("#参考资料#")) {
                             result.put("text", modelText.split("#参考资料#")[0]);
@@ -889,39 +797,12 @@ public class MilvusUtils {
         }
     }
 
-    /**
-     * Produce a rewritten version of the current query for use in semantic searches.
-     *
-     * <p>Intended to return a reformulated or clarified form of the input question to improve retrieval or downstream processing.</p>
-     *
-     * @return the rewritten question, or `null` if no rewrite is available
-     */
     public String reWriteQuestion(){
 
         return null;
     }
 
-    /**
-     * Performs a semantic search over the specified Milvus collection using the given question and uploaded files, rewrites the question with recent user context, aggregates matching document content, invokes the AI model to generate a final answer, and persists the query history.
-     *
-     * <p>Result map keys:
-     * <ul>
-     *   <li>`rewriteQuestion` — the rewritten question used for search</li>
-     *   <li>`title` — comma-separated matched document titles (when available)</li>
-     *   <li>`source` — comma-separated sources corresponding to the matched titles (when available)</li>
-     *   <li>`reportType` — comma-separated title+reportType entries formatted as `title&#&reportType` (when available)</li>
-     *   <li>`text` — generated answer text (preferred) or fallback message</li>
-     *   <li>`id` — persisted query history id</li>
-     * </ul>
-     *
-     * @param que the user's original question
-     * @param files a list of uploaded files to include when generating context for the model
-     * @param collectionName the Milvus collection to search
-     * @param dingId the user identifier used for visibility filtering and history lookup
-     * @param filterReportType optional reportType value to restrict search results; pass null to disable
-     * @return a map containing the response fields described above
-     */
-    public Map<String, String> semanticSearch3(String que, List<MultipartFile> files, String collectionName, String dingId, String filterReportType){
+    public Map<String, String> semanticSearch3(String que, List<MultipartFile> files, String collectionName, String dingId, String filterReportType, String type){
         String question = que.trim().replace("\r", "").replace("\n", "");
         String rewriteQuestion = "";
         //纯向量
@@ -961,9 +842,7 @@ public class MilvusUtils {
                 if(null != filterReportType){
                     filter.append(" and reportType == \"").append(filterReportType).append("\"");
                 }
-                if(null != filterReportType){
-                    filter.append(" and reportType == \"").append(filterReportType).append("\"");
-                }
+
                 SearchResp searchResp = client.search(SearchReq.builder()
                         .collectionName(collectionName)
                         .filter(filter.toString())
@@ -1037,7 +916,7 @@ public class MilvusUtils {
 //                    } catch (SocketTimeoutException e) {
 //                        result.put("text", "连接超时，请稍后再试");
 //                    }
-                    modelText = aiModelUtils.callWithMessageWithImgNoMarkdown(rewriteQuestion, files, resultText.toString(), new ArrayList<>());
+                    modelText = aiModelUtils.callWithMessageWithImg(rewriteQuestion, (files != null && !files.isEmpty()) ? files.get(0) : null, resultText.toString(), new ArrayList<>(),type);
                     result.put("rewriteQuestion",rewriteQuestion);
                     if (!"".equals(modelText)) {
                         result.put("title", String.join(",", titles));
@@ -1079,27 +958,7 @@ public class MilvusUtils {
     }
 
 
-    /**
-     * Perform a purely vector-based GBI search, generate a candidate SQL using model-provided
-     * context and explanations, execute or attempt to repair the SQL, and return the final
-     * SQL and analysis results.
-     *
-     * The method rewrites the incoming question using the caller's recent query history,
-     * searches the specified collections for relevant fields, base SQL fragments and business
-     * explanations, augments these with any global explanations, invokes model helpers to
-     * produce and review SQL, executes the SQL when it begins with SELECT, and formats a
-     * human-readable analysis of the query results. It also persists a query history record.
-     *
-     * @param question               the original user question to search and rewrite
-     * @param collectionName         Milvus collection name to search for fields and base SQL
-     * @param explainCollectionName  Milvus collection name to search for business logic explanations
-     * @param dingId                 caller user identifier (used to load recent history and save the new history record)
-     * @return a map containing:
-     *         - "rewriteQuery": the rewritten question used for searches;
-     *         - "sql": the final SQL produced by the model (if any);
-     *         - "result": an analysis or a textual summary of the SQL execution results (or failure messages like "暂无结果" / "数据库查询失败");
-     *         - "id": the persisted AiQueryHistory id for the saved query record.
-     */
+    //纯向量
     public Map<String, String> gbiSearch(String question, String collectionName, String explainCollectionName, String dingId) {
         String rewriteQuestion = "";
         Map<String, String> result = new HashMap<>();
@@ -1298,19 +1157,6 @@ public class MilvusUtils {
 
     }
 
-    /**
-     * Extracts and cleans an SQL statement from an input string.
-     *
-     * If the input contains a fenced code block of the form
-     * ```sql
-     * ...
-     * ```
-     * the enclosed content is extracted; otherwise the original input is used.
-     * Leading and trailing fence markers and surrounding whitespace/newlines are removed.
-     *
-     * @param sql the raw input that may contain a fenced SQL code block
-     * @return the cleaned SQL content with surrounding fences and leading/trailing newlines removed
-     */
     private String trimSql(String sql) {
         Pattern pattern = Pattern.compile("```sql\\n(.*?)\\n```", Pattern.DOTALL);
         Matcher matcher = pattern.matcher(sql);
@@ -1397,12 +1243,6 @@ public class MilvusUtils {
 //            }else
     }
 
-    /**
-     * Generate and attach embedding vectors for each PDF markdown record.
-     *
-     * @param records list of AiMilvusPdfMarkdown whose `vector` field will be populated from each record's `text`
-     * @throws BusinessException if embedding fails for any record; the exception message includes the failing record's id
-     */
     private void generatePdfReportVectors(List<AiMilvusPdfMarkdown> records) {
         for (AiMilvusPdfMarkdown record : records) {
             try {
@@ -1438,18 +1278,6 @@ public class MilvusUtils {
                 block == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS_EXTENSION_A;
     }
 
-    /**
-     * Ensures a Milvus collection with the given name exists; if missing, creates it with the
-     * predefined schema, sparse BM25 function, and dense/sparse indexes appropriate for that collection.
-     *
-     * Supported collection names and their schema patterns: "pdf_markdown", "query_accept",
-     * "chewy_parse_new", "gbi_table", "gbi_explain". Each created collection includes an `id` primary key,
-     * a dense float vector field (`vector`) with dimension VECTOR_DIM, a sparse vector field (`sparse`)
-     * backed by a BM25 function (configured for a text-like field), and other metadata fields used by the application.
-     *
-     * @param client        the Milvus client used to check for and create collections
-     * @param collectionName the target collection name to ensure exists
-     */
     private void createCollectionIfNotExists(MilvusClientV2 client, String collectionName) {
         Boolean response = client.hasCollection(
                 HasCollectionReq.builder()
@@ -1775,16 +1603,6 @@ public class MilvusUtils {
         }
     }
 
-    /**
-     * Prepares and inserts the given PDF-markdown records into the specified Milvus collection and persists their metadata to the local mapper.
-     *
-     * For each record this method generates a unique Milvus id (assigned to the record's `milvusId`), validates the record text length, constructs the JSON payload (including the vector and optional date fields), and performs a batch insert into Milvus. If the insert reports inserted rows, each record is persisted via `aiMilvusPdfMarkdownMapper.insert(...)`.
-     *
-     * @param client Milvus client used to perform the insert.
-     * @param records list of PDF-markdown records to insert; each record's `milvusId` will be set to the generated id before insertion.
-     * @param collectionName target Milvus collection name.
-     * @throws BusinessException if any record's text length exceeds MAX_TEXT_LENGTH.
-     */
     private void insertPdfDataInBatches(MilvusClientV2 client,
                                         List<AiMilvusPdfMarkdown> records,
                                         String collectionName) {
@@ -1846,16 +1664,6 @@ public class MilvusUtils {
         }
     }
 
-    /**
-     * Stores an LLM query-and-response record in the specified Milvus collection and returns the generated id.
-     *
-     * <p>The inserted record contains: `id`, a JSON-serialized `record` with `query` and `result`, `source`, and an embedded `vector`.
-     * If insertion fails, the method logs the error and still returns the generated id.
-     *
-     * @param queryHistory the history entry whose `rewriteQuery` and `result` will be recorded
-     * @param collectionName the target Milvus collection name
-     * @return the generated Milvus id for the record
-     */
     public Long processLlmBackMilvus(AiQueryHistory queryHistory, String collectionName) {
         MilvusClientV2 client = null;
         Long id = UUIDConverter.generateSafeUUIDAsLong();

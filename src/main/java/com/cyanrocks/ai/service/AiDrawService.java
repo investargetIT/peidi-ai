@@ -19,12 +19,14 @@ import com.cyanrocks.ai.utils.SearchSqlUtils;
 import com.cyanrocks.ai.utils.rabbitmq.RabbitMQConfig;
 import com.cyanrocks.ai.vo.request.SearchReq;
 import com.cyanrocks.ai.vo.request.SortReq;
+import okhttp3.OkHttpClient;
 import okio.BufferedSource;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import okhttp3.*;
@@ -35,7 +37,6 @@ import java.io.IOException;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
 
 
 /**
@@ -54,6 +55,19 @@ public class AiDrawService extends ServiceImpl<AiDrawMapper, AiDraw> {
     private String apiKey;
     @Value("${grsai.api-key-test}")
     private String apiKeyTest;
+    @Value("${dashscope.api-key}")
+    private String dashscopeApiKey;
+    @Value("${qnaigc.api-key}")
+    private String qnaigcApiKey;
+
+    @Autowired
+    @Qualifier("okHttpClient")
+    private OkHttpClient okHttpClient;
+
+    @Autowired
+    @Qualifier("okHttpClientShort")
+    private OkHttpClient okHttpClientShort;
+
     @Autowired
     private OssUtils ossUtils;
     @Autowired
@@ -67,16 +81,6 @@ public class AiDrawService extends ServiceImpl<AiDrawMapper, AiDraw> {
     @Autowired
     private AiDrawRecordMapper aiDrawRecordMapper;
 
-    /**
-     * Creates or updates an AI drawing task, triggers synchronous image generation, uploads generated images to OSS, and persists task metadata.
-     *
-     * If a task with the same UUID does not exist this method inserts a new record; otherwise it updates the existing task fields before generation.
-     * After generation it stores generated image object names in the task's `imgs`, sets `updateAt`, and updates the task `status` to indicate success or failure.
-     *
-     * Side effects: inserts/updates the AiDraw record in the database and uploads image bytes to OSS.
-     *
-     * @param draw the AiDraw task to create or update and to use for generation (must contain `uuid`, `urlParam`, `size`, and `maxRetries` as applicable)
-     */
     public void newDraw(AiDraw draw) {
         AiDraw exist = baseMapper.selectOne(Wrappers.<AiDraw>lambdaQuery().eq(AiDraw::getUuid,draw.getUuid()));
         if (null == exist){
@@ -113,16 +117,6 @@ public class AiDrawService extends ServiceImpl<AiDrawMapper, AiDraw> {
         baseMapper.updateById(draw);
     }
 
-    /**
-     * Creates or updates an AiDraw task and enqueues it for asynchronous processing.
-     *
-     * If a task with the same UUID does not exist, the method inserts the provided task;
-     * otherwise it updates the existing task's parameters. In both cases the task status
-     * is set to 0 (processing) and the createAt/updateAt timestamps are cleared prior to
-     * publishing the task to the draw processing queue to avoid serialization issues.
-     *
-     * @param draw the AiDraw task to create or update and publish for asynchronous processing
-     */
     public void newDrawAsy(AiDraw draw) {
         AiDraw exist = baseMapper.selectOne(Wrappers.<AiDraw>lambdaQuery().eq(AiDraw::getUuid,draw.getUuid()));
         if (null == exist){
@@ -151,15 +145,6 @@ public class AiDrawService extends ServiceImpl<AiDrawMapper, AiDraw> {
         }
     }
 
-    /**
-     * Retrieve a paginated list of AiDraw records with optional dynamic search and sort.
-     *
-     * @param pageNo    the page number to retrieve
-     * @param pageSize  the number of items per page
-     * @param sortStr   JSON array string of SortReq objects used to build sort SQL; when null no custom sort is applied
-     * @param searchStr JSON array string of SearchReq objects used to build search SQL; when null no search filtering is applied
-     * @return          a page of AiDraw records matching the provided search and sort criteria
-     */
     public IPage<AiDraw> getPage(int pageNo, int pageSize, String sortStr, String searchStr){
         String searchSb = null;
         if (null != searchStr) {
@@ -174,24 +159,10 @@ public class AiDrawService extends ServiceImpl<AiDrawMapper, AiDraw> {
         return baseMapper.getPage(new Page<>(pageNo, pageSize), searchSb, sortSb);
     }
 
-    /**
-     * Persists the given AI draw record to the database.
-     *
-     * @param aiDrawRecord the AiDrawRecord to insert; its generated id may be populated after insertion
-     */
     public void newRecord(AiDrawRecord aiDrawRecord){
         aiDrawRecordMapper.insert(aiDrawRecord);
     }
 
-    /**
-     * Retrieves a paged list of AiDrawRecord entries applying optional JSON-encoded search and sort criteria.
-     *
-     * @param pageNo    1-based page number to retrieve
-     * @param pageSize  number of records per page
-     * @param sortStr   optional JSON array of SortReq objects describing sort order (null to use default)
-     * @param searchStr optional JSON array of SearchReq objects describing filter conditions (null for no filters)
-     * @return          a page of AiDrawRecord matching the provided search and sort criteria
-     */
     public IPage<AiDrawRecord> getRecordPage(int pageNo, int pageSize, String sortStr, String searchStr){
         String searchSb = null;
         if (null != searchStr) {
@@ -206,20 +177,6 @@ public class AiDrawService extends ServiceImpl<AiDrawMapper, AiDraw> {
         return aiDrawRecordMapper.getRecordPage(new Page<>(pageNo, pageSize), searchSb, sortSb);
     }
 
-    /**
-     * Requests image generation from the drawing API, retrying on failures, and downloads the generated images as raw bytes.
-     *
-     * This method attempts `size` generation cycles; for each cycle it calls the draw API and, if URLs are returned,
-     * downloads all images and appends their byte arrays to the result. Each cycle will retry up to `maxRetries`
-     * times with a short delay between attempts. If the thread is interrupted during a sleep between retries,
-     * the method restores the interrupt flag and returns an empty list immediately.
-     *
-     * @param jsonParams JSON string sent to the drawing API describing the generation request
-     * @param itemId     identifier used for logging and correlation of the request
-     * @param size       number of generation cycles to perform; each successful cycle yields the images returned by the API
-     * @param maxRetries maximum number of retry attempts per generation cycle (0 means a single attempt)
-     * @return a list of downloaded image byte arrays in the order they were obtained; may be empty if no images were produced or if interrupted
-     */
     public List<byte[]> sendDrawingRequestSync(String jsonParams, String itemId, int size, int maxRetries) {
         List<byte[]> result = new ArrayList<>();
         for (;size > 0; size--) {
@@ -262,15 +219,6 @@ public class AiDrawService extends ServiceImpl<AiDrawMapper, AiDraw> {
         return result;
     }
 
-    /**
-     * Parse the draw API's streaming response and extract generated image URLs when the job succeeds.
-     *
-     * @param jsonParams JSON request body sent to the draw API
-     * @param itemId     identifier used for logging context
-     * @return a list of image URLs produced by the API; an empty list if the stream ends without a successful result
-     * @throws IOException       if the HTTP request or response body handling fails
-     * @throws BusinessException if the API reports a failure status or a stream payload cannot be parsed
-     */
     public List<String> fetchImageUrls(String jsonParams, String itemId) throws IOException {
         Request request = new Request.Builder()
                 .url(API_URL)
@@ -278,12 +226,7 @@ public class AiDrawService extends ServiceImpl<AiDrawMapper, AiDraw> {
                 .addHeader("Authorization", "Bearer " + apiKey)
                 .addHeader("Content-Type", "application/json")
                 .build();
-        OkHttpClient client = new OkHttpClient.Builder()
-                .connectTimeout(600, TimeUnit.SECONDS)
-                .writeTimeout(600, TimeUnit.SECONDS)
-                .readTimeout(600, TimeUnit.SECONDS)
-                .build();
-        try (Response response = client.newCall(request).execute()) {
+        try (Response response = okHttpClient.newCall(request).execute()) {
             if (!response.isSuccessful()) {
                 throw new IOException("HTTP error! status: " + response.code());
             }
@@ -332,21 +275,9 @@ public class AiDrawService extends ServiceImpl<AiDrawMapper, AiDraw> {
                 }
             }
             return imageUrls;
-        }finally {
-            client.clone();
         }
     }
 
-    /**
-     * Aggregates streamed `delta.content` fragments from a chat-completions streaming response into a single string.
-     *
-     * Sends the provided JSON payload to the chat completions endpoint and concatenates each non-empty
-     * `choices[].delta.content` value encountered in `data: ` stream events.
-     *
-     * @param jsonParams the JSON request payload to send to the chat-completions endpoint
-     * @return the concatenated content extracted from streamed `choices[].delta.content` fragments
-     * @throws BusinessException if the HTTP request fails, the response body is empty, or an I/O or parsing error occurs
-     */
     public String transferGemini(String jsonParams){
         StringBuilder parseResult = new StringBuilder();
         Request request = new Request.Builder()
@@ -355,12 +286,7 @@ public class AiDrawService extends ServiceImpl<AiDrawMapper, AiDraw> {
                 .addHeader("Authorization", "Bearer " + apiKeyTest)
                 .addHeader("Content-Type", "application/json")
                 .build();
-        OkHttpClient client = new OkHttpClient.Builder()
-                .connectTimeout(600, TimeUnit.SECONDS)
-                .writeTimeout(600, TimeUnit.SECONDS)
-                .readTimeout(600, TimeUnit.SECONDS)
-                .build();
-        try (Response response = client.newCall(request).execute()) {
+        try (Response response = okHttpClient.newCall(request).execute()) {
             if (!response.isSuccessful()) {
                 throw new IOException("HTTP error! status: " + response.code());
             }
@@ -400,19 +326,75 @@ public class AiDrawService extends ServiceImpl<AiDrawMapper, AiDraw> {
             }
         } catch (Exception e) {
             throw new BusinessException(500, " failed: " + e.getMessage());
-        } finally {
-            client.clone();
         }
         return parseResult.toString();
     }
 
-    /**
-     * Downloads each image at the provided URLs and returns their raw bytes.
-     *
-     * @param urls the list of image URLs to download
-     * @return a list of byte arrays where each element is the content of the corresponding image URL
-     * @throws IOException if an I/O error occurs while downloading any image
-     */
+    public String transferAliyun(String jsonParams) {
+        String apiUrl = "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation";
+        Request request = new Request.Builder()
+                .url(apiUrl)
+                .post(RequestBody.create(jsonParams, JSON))
+                .addHeader("Authorization", "Bearer " + dashscopeApiKey)
+                .addHeader("Content-Type", "application/json")
+                .build();
+        try (Response response = okHttpClient.newCall(request).execute()) {
+            if (!response.isSuccessful()) {
+                String errBody = response.body() != null ? response.body().string() : "";
+                throw new BusinessException(500, "Aliyun API error: " + response.code() + " " + errBody);
+            }
+            String body = response.body().string();
+            log.info("Aliyun response: {}", body);
+            JsonNode root = objectMapper.readTree(body);
+            JsonNode choices = root.path("output").path("choices");
+            if (choices.isArray() && choices.size() > 0) {
+                JsonNode content = choices.get(0).path("message").path("content");
+                if (content.isArray()) {
+                    for (JsonNode item : content) {
+                        String imageUrl = item.path("image").asText(null);
+                        if (imageUrl != null && !imageUrl.isEmpty()) {
+                            return imageUrl;
+                        }
+                    }
+                }
+            }
+            throw new BusinessException(500, "No image in response: " + body);
+        } catch (BusinessException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new BusinessException(500, "transferAliyun error: " + e.getMessage());
+        }
+    }
+
+    public String transferQnaigc(String jsonParams) {
+        String apiUrl = "https://api.qnaigc.com/v1/images/edits";
+        Request request = new Request.Builder()
+                .url(apiUrl)
+                .post(RequestBody.create(jsonParams, JSON))
+                .addHeader("Authorization", "Bearer " + qnaigcApiKey)
+                .addHeader("Content-Type", "application/json")
+                .build();
+        try (Response response = okHttpClient.newCall(request).execute()) {
+            if (!response.isSuccessful()) {
+                String errBody = response.body() != null ? response.body().string() : "";
+                throw new BusinessException(500, "Qnaigc API error: " + response.code() + " " + errBody);
+            }
+            String body = response.body().string();
+
+            log.info("Qnaigc response: {}", body);
+            JsonNode root = objectMapper.readTree(body);
+            JsonNode data = root.path("data");
+            if(data.isArray() && data.size() > 0){
+                return root.path("data").toString();
+            }
+            throw new BusinessException(500, "No image in response: " + body);
+        } catch (BusinessException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new BusinessException(500, "transferQnaigc error: " + e.getMessage());
+        }
+    }
+
     private List<byte[]> downloadImages(List<String> urls) throws IOException {
         List<byte[]> list = new ArrayList<>();
         for (String url : urls) {
@@ -422,21 +404,9 @@ public class AiDrawService extends ServiceImpl<AiDrawMapper, AiDraw> {
         return list;
     }
 
-    /**
-     * Download an image from the given URL and return its raw bytes.
-     *
-     * @param imageUrl the HTTP(S) URL of the image to download
-     * @return the image content as a byte array
-     * @throws IOException if the HTTP response is unsuccessful, the response body is empty, or a network I/O error occurs
-     */
     private byte[] downloadImage(String imageUrl) throws IOException {
         Request request = new Request.Builder().url(imageUrl).build();
-        OkHttpClient client = new OkHttpClient.Builder()
-                .connectTimeout(300, TimeUnit.SECONDS)
-                .writeTimeout(300, TimeUnit.SECONDS)
-                .readTimeout(300, TimeUnit.SECONDS)
-                .build();
-        try (Response response = client.newCall(request).execute()) {
+        try (Response response = okHttpClientShort.newCall(request).execute()) {
             if (!response.isSuccessful()) {
                 throw new IOException("下载图片失败: " + response.code() + ", URL: " + imageUrl);
             }
@@ -445,47 +415,21 @@ public class AiDrawService extends ServiceImpl<AiDrawMapper, AiDraw> {
                 throw new IOException("图片响应体为空: " + imageUrl);
             }
             return body.bytes();
-        }finally {
-            client.clone();
         }
     }
 
-    /**
-     * Insert a new AiDrawMaterials record into the persistent store.
-     *
-     * @param aiDrawMaterials the materials entity to insert; the entity may be populated with a generated id after insertion
-     */
     public void newMaterials(AiDrawMaterials aiDrawMaterials){
         aiDrawMaterialsMapper.insert(aiDrawMaterials);
     }
 
-    /**
-     * Updates an existing AiDrawMaterials record in the database using the entity's id.
-     *
-     * @param aiDrawMaterials the material entity containing updated fields; its `id` identifies the record to update
-     */
     public void updateMaterials(AiDrawMaterials aiDrawMaterials){
         aiDrawMaterialsMapper.updateById(aiDrawMaterials);
     }
 
-    /**
-     * Delete the material record identified by the provided entity's id.
-     *
-     * @param aiDrawMaterials an entity whose `id` field specifies the material to delete
-     */
     public void deleteMaterials(AiDrawMaterials aiDrawMaterials){
         aiDrawMaterialsMapper.deleteById(aiDrawMaterials.getId());
     }
 
-    /**
-     * Retrieve a paginated list of AiDrawMaterials with optional JSON-defined search and sort.
-     *
-     * @param pageNo   1-based page number to fetch
-     * @param pageSize number of items per page
-     * @param sortStr  optional JSON array of SortReq objects that define ordering (or null)
-     * @param searchStr optional JSON array of SearchReq objects that define filtering (or null)
-     * @return         a page of AiDrawMaterials matching the provided search and sort criteria
-     */
     public IPage<AiDrawMaterials> getMaterialsPage(int pageNo, int pageSize, String sortStr, String searchStr){
         String searchSb = null;
         if (null != searchStr) {
