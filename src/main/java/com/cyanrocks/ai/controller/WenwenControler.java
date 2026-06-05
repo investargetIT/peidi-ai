@@ -2,6 +2,7 @@ package com.cyanrocks.ai.controller;
 
 import cn.hutool.json.JSONUtil;
 import cn.hutool.core.util.XmlUtil;
+import com.cyanrocks.ai.service.SiyuQuestionService;
 import com.cyanrocks.ai.utils.http.HttpClientService;
 import com.cyanrocks.ai.utils.http.HttpResponseContent;
 import com.cyanrocks.ai.utils.http.HttpTimeoutConfig;
@@ -32,6 +33,7 @@ import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
+import javax.annotation.Resource;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -63,7 +65,10 @@ public class WenwenControler {
     @Autowired
     private HttpClientService httpClientService;
     private static final String REDIS_KEY = "kefu:wechat:token";
-
+    @Value("${wechat.siyu.openKfId:}")
+    private String siyuOpenKfId;
+    @Resource
+    private SiyuQuestionService siyuQuestionService;
 
     @GetMapping("/wechat/question")
     @ApiOperation(value = "企业微信机器人验证url")
@@ -292,6 +297,19 @@ public class WenwenControler {
             Map<String, Object> msgMap = XmlUtil.xmlToMap(sMsg);
             String jsonStr = JSONUtil.toJsonStr(msgMap);
             JSONObject msgJson = JSONObject.parseObject(jsonStr);
+            String openKfId = msgJson.getString("OpenKfId");
+            if (siyuOpenKfId.equals(openKfId)) {
+                System.out.println("识别为私域运营客服消息");
+                // 异步处理，立即返回 success 防止微信重复回调
+                CompletableFuture.runAsync(() -> {
+                    try {
+                        siyuQuestionService.getAnswer(msgSignature, timestamp, nonce, requestBody);
+                    } catch (Exception e) {
+                        System.err.println("异步处理私域运营客服消息失败: " + e.getMessage());
+                    }
+                });
+                return "success";
+            }
             //获取access_token
             String token = stringRedisTemplate.opsForValue().get(REDIS_KEY);
             if (null == token){
@@ -428,4 +446,5 @@ public class WenwenControler {
         }
         return "";
     }
+
 }

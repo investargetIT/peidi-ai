@@ -28,6 +28,7 @@
                     select="getMarkdownListByParentTitle" fetchType="lazy">
             <result property="milvusId" column="milvus_id"/>
             <result property="text" column="text"/>
+            <result property="source" column="source"/>
             <result property="batchNo" column="batch_no"/>
         </collection>
     </resultMap>
@@ -45,7 +46,7 @@
     </select>
 
     <select id="getMarkdownListByParentTitle" resultType="com.cyanrocks.ai.dao.entity.AiMilvusPdfMarkdown">
-        select milvus_id, text, batch_no
+        select milvus_id, text, batch_no, source
         from ai_milvus_pdf_markdown
         where title = #{title}
     </select>

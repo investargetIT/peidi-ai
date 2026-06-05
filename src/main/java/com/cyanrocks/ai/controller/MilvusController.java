@@ -8,8 +8,11 @@ import com.cyanrocks.ai.log.Log;
 import com.cyanrocks.ai.service.AiMilvusPdfMarkdownService;
 import com.cyanrocks.ai.utils.MilvusUtils;
 import com.cyanrocks.ai.utils.FileToMarkdownConverter;
+import com.cyanrocks.ai.vo.response.GenericResponse;
+import com.cyanrocks.ai.vo.response.VectorSearchRespVO;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
+import io.swagger.annotations.ApiParam;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
@@ -45,12 +48,16 @@ public class MilvusController {
         return milvusUtils.semanticSearch2(question, file, "pdf_markdown", "03365042031527679493",null,"callWithMessageWithImg");
     }
 
+
+
     @GetMapping("/page")
     @ApiOperation(value = "获取分页")
     public IPage<AiMilvusPdfMarkdown> getMilvusPdfMarkdownPage(@RequestParam int pageNo, @RequestParam int pageSize,
                                                                @RequestParam(value = "sortStr", required = false) String sortStr,
                                                                @RequestParam(value = "searchStr", required = false) String searchStr) {
-        return aiMilvusPdfMarkdownService.getMilvusPdfMarkdownPage(pageNo, pageSize, sortStr, searchStr);
+        IPage<AiMilvusPdfMarkdown> milvusPdfMarkdownPage = aiMilvusPdfMarkdownService.getMilvusPdfMarkdownPage(pageNo, pageSize, sortStr, searchStr);
+
+        return milvusPdfMarkdownPage;
     }
 
     @PostMapping("/new")
@@ -79,5 +86,25 @@ public class MilvusController {
     @ApiOperation(value = "数据总览")
     public JSONObject getDashBoard() {
         return aiMilvusPdfMarkdownService.getDashboard();
+    }
+
+    @PostMapping("/vector/search")
+    @ApiOperation(value = "纯向量检索文章")
+    public GenericResponse<VectorSearchRespVO> vectorSearch(
+            @ApiParam(value = "问题", required = true) @RequestParam("question") String question,
+            @ApiParam(value = "报告类型") @RequestParam(value = "reportType", required = false) String reportType,
+            @ApiParam(value = "返回结果数量") @RequestParam(value = "topK", required = false) Integer topK) {
+        try {
+            VectorSearchRespVO result = milvusUtils.pureVectorSearch(
+                    question,
+                    milvusCollection,
+                    "vector_search_user",
+                    reportType,
+                    topK
+            );
+            return GenericResponse.success(result);
+        } catch (Exception e) {
+            return GenericResponse.error("检索失败: " + e.getMessage(), null);
+        }
     }
 }

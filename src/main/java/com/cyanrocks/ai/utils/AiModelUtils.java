@@ -1862,4 +1862,101 @@ public class AiModelUtils {
         return null;
     }
 
+    /**
+     * 意图识别 - 用于私域运营客服场景
+     * 支持识别意图类型：领取奖品、询问领取方式、罐头相关等
+     * 返回 JSON 格式字符串: {"intent": "RECEIVE_GIFT", "score": 0.85, "params": "xxx"}
+     *
+     * @param userMessage 用户发送的消息
+     * @return 意图识别结果 JSON 字符串
+     */
+    public String getIntentRecognition(String userMessage) {
+        final int MAX_RETRIES = 3;
+        AiModel aiModel = aiModelMapper.selectOne(Wrappers.<AiModel>lambdaQuery()
+                .eq(AiModel::getType, "getIntentRecognition")
+                .eq(AiModel::getActive, true));
+        if (aiModel == null) {
+            System.err.println("未找到意图识别模型配置");
+            return null;
+        }
+        for (int attempt = 0; attempt < MAX_RETRIES; attempt++) {
+            try (CloseableHttpClient httpClient = HttpClients.createDefault()) {
+                // 使用兼容模式 API，请求格式与 OpenAI 一致
+                HttpPost httpPost = new HttpPost("https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions");
+                httpPost.setHeader("Authorization", "Bearer " + DASHSCOPE_API_KEY);
+                httpPost.setHeader("Content-Type", "application/json");
+
+                // 构建请求体 -
+                JSONObject requestBody = new JSONObject();
+                requestBody.put("model", aiModel.getModelName());
+
+                com.alibaba.fastjson.JSONArray messages = new com.alibaba.fastjson.JSONArray();
+
+                JSONObject system = new JSONObject();
+                system.put("role", "system");
+                system.put("content", aiModel.getPrompt());
+                messages.add(system);
+
+                JSONObject user = new JSONObject();
+                user.put("role", "user");
+                user.put("content", "用户消息：" + userMessage);
+                messages.add(user);
+
+                requestBody.put("messages", messages);
+
+                httpPost.setEntity(new StringEntity(
+                        requestBody.toJSONString(),
+                        ContentType.APPLICATION_JSON
+                ));
+
+                System.out.println("意图识别请求: " + requestBody.toJSONString());
+                System.out.println("开始意图识别模型调用 " + LocalDateTime.now());
+
+                try (CloseableHttpResponse response = httpClient.execute(httpPost)) {
+                    System.out.println("意图识别模型返回 " + LocalDateTime.now());
+                    HttpEntity entity = response.getEntity();
+                    if (entity != null) {
+                        try (InputStream inputStream = entity.getContent()) {
+                            String responseBody = IOUtils.toString(inputStream, StandardCharsets.UTF_8);
+                            System.out.println("意图识别响应: " + responseBody);
+
+                            if (response.getStatusLine().getStatusCode() == 200) {
+                                JSONObject jsonResponse = JSONObject.parseObject(responseBody);
+                                // 兼容模式响应格式：choices 直接在顶层
+                                com.alibaba.fastjson.JSONArray choices = jsonResponse.getJSONArray("choices");
+                                if (choices != null && !choices.isEmpty()) {
+                                    JSONObject firstChoice = choices.getJSONObject(0);
+                                    JSONObject messageObj = firstChoice.getJSONObject("message");
+                                    if (messageObj != null) {
+                                        String content = messageObj.getString("content");
+                                        if (StringUtils.isNotEmpty(content)) {
+                                            return content;
+                                        }
+                                    }
+                                }
+                                System.out.println("无法解析意图识别响应内容");
+                                return null;
+                            } else {
+                                System.out.println("意图识别API错误: " + responseBody +
+                                        " (状态码: " + response.getStatusLine().getStatusCode() + ")");
+                                TimeUnit.SECONDS.sleep(2);
+                            }
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                System.out.println("调用意图识别模型时发生错误: " + e.getMessage());
+                if (attempt < MAX_RETRIES - 1) {
+                    try {
+                        TimeUnit.SECONDS.sleep(2);
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        break;
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
 }

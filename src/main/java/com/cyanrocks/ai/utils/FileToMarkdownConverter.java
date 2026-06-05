@@ -29,7 +29,12 @@ import org.apache.http.impl.client.HttpClients;
 import org.apache.pdfbox.multipdf.Splitter;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
+import org.apache.poi.xwpf.usermodel.XWPFDocument;
+import org.apache.poi.xwpf.usermodel.XWPFParagraph;
 import org.apache.tika.Tika;
+import org.apache.tika.config.TikaConfig;
+import org.apache.tika.metadata.Metadata;
+import org.apache.tika.mime.MimeTypes;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -101,13 +106,29 @@ public class FileToMarkdownConverter {
         aiMilvusPdfMarkdownMapper.insert(initPdf);
 
         try {
-            InputStream is = file.getInputStream();
-            Tika tika = new Tika();
-            String realType = tika.detect(is);
-            System.out.println("上传文件类型:" + realType);
-            //完整文件创建临时文件
+            // 先创建临时文件并保存上传文件内容
             Path tempFile = Files.createTempFile("openai_", file.getOriginalFilename());
             file.transferTo(tempFile.toFile());
+
+            // 根据文件扩展名判断文件类型（比 Tika 检测更可靠）
+            String filename = file.getOriginalFilename();
+            String extension = filename != null && filename.contains(".")
+                    ? filename.substring(filename.lastIndexOf(".")).toLowerCase()
+                    : "";
+            String realType;
+            if (extension.equals(".pdf")) {
+                realType = "application/pdf";
+            } else if (extension.equals(".docx")) {
+                realType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+            } else if (extension.equals(".doc")) {
+                realType = "application/msword";
+            } else {
+                // 其他类型尝试用 Tika 检测
+                Tika tika = new Tika();
+                realType = tika.detect(tempFile);
+            }
+            System.out.println("上传文件类型:" + realType + ", 扩展名:" + extension);
+
             //文件存储在oss中
             String source = UPLOAD_PDF_PATH + tempFile.getFileName().toString();
             ossUtils.uploadToOss(source, Files.readAllBytes(tempFile));
@@ -163,7 +184,59 @@ public class FileToMarkdownConverter {
                     Files.deleteIfExists(tempFile);
                     return; // 异步处理，直接返回
                 }
-            }else {
+            } else if (realType.equals("application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+                    || realType.equals("application/msword")) {
+                // 处理 DOC/DOCX 文件，参考 PDF 拆分逻辑
+                System.out.println("文件为doc/docx");
+                List<byte[]> splitDocs = splitDocxWithOverlap(tempFile);
+                System.out.println("文件拆分为" + splitDocs.size() + "份");
+                if (splitDocs.size() == 1) {
+                    // 页数较少，不拆分，直接处理
+                    String fullResponse = aiModelUtils.processFile(tempFile);
+                    AiMilvusPdfMarkdown pdfRequest = JSON.toJavaObject(JSON.parseObject(request), AiMilvusPdfMarkdown.class);
+                    pdfRequest.setCreateAt(LocalDateTime.now());
+                    pdfRequest.setText(fullResponse);
+                    pdfRequest.setBatchNo(1);
+                    pdfRequest.setSource(source);
+                    pdfRecordMilvusList.add(pdfRequest);
+                } else {
+                    // 需要拆分，发送到 RabbitMQ 异步处理
+                    AiMilvusPdfMarkdown pdfRequest = JSON.toJavaObject(JSON.parseObject(request), AiMilvusPdfMarkdown.class);
+                    //防止重复上传，中断请求模型操作
+                    String lockKey = "doc_upload_lock:" + pdfRequest.getTitle();
+                    // 加锁（20分钟过期，防死锁）
+                    Boolean locked = redisTemplate.opsForValue().setIfAbsent(lockKey, "1", Duration.ofMinutes(20));
+                    if (Boolean.FALSE.equals(locked)) {
+                        if (CollectionUtil.isNotEmpty(aiMilvusPdfMarkdownMapper.selectList(Wrappers.<AiMilvusPdfMarkdown>lambdaQuery()
+                                .eq(AiMilvusPdfMarkdown::getTitle, pdfRequest.getTitle())))) {
+                            throw new BusinessException(500, "文件已存在");
+                        } else {
+                            throw new BusinessException(500, "文件正在处理中，请稍后再试");
+                        }
+                    }
+                    //判断是否有初始新建文件
+                    if (CollectionUtil.isNotEmpty(aiMilvusPdfMarkdownMapper.selectList(Wrappers.<AiMilvusPdfMarkdown>lambdaQuery()
+                            .eq(AiMilvusPdfMarkdown::getTitle, pdfRequest.getTitle()).isNotNull(AiMilvusPdfMarkdown::getMilvusId)))) {
+                        throw new BusinessException(500, "该文件已存在");
+                    }
+                    // 发送所有分片任务到rabbitmq并发模型处理
+                    String requestId = UUID.randomUUID().toString();
+                    for (int i = 0; i < splitDocs.size(); i++) {
+                        System.out.println("存入rabbitMQ第" + (i + 1) + "份");
+
+                        PdfChunkTask task = new PdfChunkTask();
+                        task.setRequestId(requestId);
+                        task.setRequestStr(request);
+                        task.setSplitPdf(splitDocs.get(i)); // 使用同一个 PdfChunkTask，字段名虽为 splitPdf 但实际可以是任意文件字节
+                        task.setBatchNo(i + 1);
+                        task.setSource(source);
+                        task.setOriginalFilename(file.getOriginalFilename());
+                        rabbitTemplate.convertAndSend(RabbitMQConfig.PDF_PROCESS_QUEUE, task);
+                    }
+                    Files.deleteIfExists(tempFile);
+                    return; // 异步处理，直接返回
+                }
+            } else {
                 System.out.println("文件为" + realType);
                 String fullResponse = aiModelUtils.processFile(tempFile);
                 System.out.println("处理阿里云返回数据");
@@ -234,6 +307,85 @@ public class FileToMarkdownConverter {
         } catch (IOException e) {
             System.out.println(e.getMessage());
             throw new BusinessException(500, "文件切分失败");
+        }
+    }
+
+    /**
+     * 拆分 DOCX 文件（按内容长度拆分）
+     * 每 2500 个字符作为一个片段，有重叠
+     * @param docxPath DOCX 文件路径
+     * @return 拆分后的 DOCX 文件列表（每个元素是一个 DOCX 文件的字节数组）
+     */
+    public List<byte[]> splitDocxWithOverlap(Path docxPath) {
+
+        AiEnum chunkSize = aiEnumMapper.selectOne(Wrappers.<AiEnum>lambdaQuery()
+                .eq(AiEnum::getType, "chunkSize"));
+        AiEnum chunkSizeOverlap = aiEnumMapper.selectOne(Wrappers.<AiEnum>lambdaQuery()
+                .eq(AiEnum::getType, "chunkSizeOverlap"));
+        // 每个片段的字符数
+        final int CHUNK_SIZE = Integer.parseInt(chunkSize.getValue());
+        // 重叠字符数
+        final int OVERLAP_SIZE = Integer.parseInt(chunkSizeOverlap.getValue());
+        try {
+            // 1. 打开 DOCX 文件，读取所有文本内容
+            try (XWPFDocument document = new XWPFDocument(Files.newInputStream(docxPath))) {
+                List<XWPFParagraph> paragraphs = document.getParagraphs();
+
+                // 2. 提取全部文本
+                StringBuilder fullText = new StringBuilder();
+                for (XWPFParagraph para : paragraphs) {
+                    String text = para.getText();
+                    if (text != null && !text.trim().isEmpty()) {
+                        fullText.append(text).append("\n");
+                    }
+                }
+
+                String content = fullText.toString();
+                int totalLength = content.length();
+
+                logger.info("DOCX 文件总字符数: " + totalLength);
+
+                // 3. 如果总字符数 <= CHUNK_SIZE，不拆分，返回整个文件
+                if (totalLength <= CHUNK_SIZE) {
+                    return Collections.singletonList(Files.readAllBytes(docxPath));
+                }
+
+                // 4. 按 CHUNK_SIZE 拆分，有重叠
+                List<byte[]> resultBytes = new ArrayList<>();
+                int currentStart = 0;
+
+                while (currentStart < totalLength) {
+                    // 计算当前分片的结束位置
+                    int endPos = Math.min(currentStart + CHUNK_SIZE, totalLength);
+
+                    // 提取当前分片的文本
+                    String chunkText = content.substring(currentStart, endPos);
+
+                    // 创建新的 DOCX 文档
+                    try (XWPFDocument partDoc = new XWPFDocument()) {
+                        XWPFParagraph newPara = partDoc.createParagraph();
+                        newPara.createRun().setText(chunkText);
+
+                        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                        partDoc.write(baos);
+                        resultBytes.add(baos.toByteArray());
+                    }
+
+                    // 如果已到末尾，退出
+                    if (endPos >= totalLength) {
+                        break;
+                    }
+
+                    // 重叠：下一个分片从当前分片的最后 OVERLAP_SIZE 个字符开始
+                    currentStart = endPos - OVERLAP_SIZE;
+                }
+
+                logger.info("DOCX 文件拆分为 " + resultBytes.size() + " 份");
+                return resultBytes;
+            }
+        } catch (IOException e) {
+            logger.log(Level.SEVERE, "拆分 DOCX 文件失败: " + docxPath, e);
+            throw new BusinessException(500, "DOCX 文件拆分失败: " + e.getMessage());
         }
     }
 

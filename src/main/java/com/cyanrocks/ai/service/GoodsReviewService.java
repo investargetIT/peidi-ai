@@ -254,10 +254,14 @@ public class GoodsReviewService extends ServiceImpl<BiGoodsReviewMapper, BiGoods
     public void newGoodsReview(List<BiGoodsReview> goodsReviews){
         goodsReviews.forEach(record->{
             if (StringUtils.isNotEmpty(record.getGoodsReview())){
-                BiGoodsReview exist = baseMapper.selectOne(Wrappers.<BiGoodsReview>lambdaQuery()
+                List<BiGoodsReview> exist = baseMapper.selectList(Wrappers.<BiGoodsReview>lambdaQuery()
                         .eq(BiGoodsReview::getReviewDate, record.getReviewDate())
-                        .eq(BiGoodsReview::getGoodsReview, record.getGoodsReview()));
-                if (null == exist){
+                        .eq(BiGoodsReview::getGoodsReview, record.getGoodsReview())
+                        .eq(BiGoodsReview::getGoodsId,record.getGoodsId())
+                        .eq(BiGoodsReview::getCustomerName, record.getCustomerName())
+                        .eq(BiGoodsReview::getChannel, record.getChannel()));
+
+                if (CollectionUtil.isEmpty(exist)){
                     ConnectConfig config = ConnectConfig.builder()
                             .uri(milvusUri)
                             .build();

@@ -8,6 +8,7 @@ import com.cyanrocks.ai.dao.entity.*;
 import com.cyanrocks.ai.dao.mapper.*;
 import com.cyanrocks.ai.exception.BusinessException;
 import com.cyanrocks.ai.vo.GbiMilvus;
+import com.cyanrocks.ai.vo.response.VectorSearchRespVO;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import io.milvus.v2.client.ConnectConfig;
@@ -1703,5 +1704,115 @@ public class MilvusUtils {
             }
         }
         return id;
+    }
+
+    /**
+     * 纯向量检索文章（不调用AI模型）
+     * @param question 问题
+     * @param collectionName 集合名称
+     * @param userId 用户ID
+     * @param filterReportType 报告类型过滤
+     * @param topK 返回结果数量
+     * @return 检索结果
+     */
+    public VectorSearchRespVO pureVectorSearch(String question, String collectionName, String userId, String filterReportType, Integer topK) {
+        String que = question.trim().replace("\r", "").replace("\n", "");
+        String rewriteQuestion = "";
+        VectorSearchRespVO result = new VectorSearchRespVO();
+
+        ConnectConfig config = ConnectConfig.builder()
+                .uri(milvusUri)
+                .build();
+        MilvusClientV2 client = null;
+        try {
+            client = new MilvusClientV2(config);
+
+            // 根据最近一条问题，重写问题
+            List<AiQueryHistory> historyList = aiQueryHistoryMapper.selectPage(new Page<>(1, 1), Wrappers.<AiQueryHistory>lambdaQuery()
+                    .eq(AiQueryHistory::getUserId, userId).eq(AiQueryHistory::getSource, "纯向量检索")
+                    .orderByDesc(AiQueryHistory::getCreateAt)).getRecords();
+
+            if (CollectionUtil.isEmpty(historyList)) {
+                rewriteQuestion = que;
+            } else if (null == historyList.get(0).getRewriteQuery()) {
+                if (null == historyList.get(0).getQuery()) {
+                    rewriteQuestion = que;
+                } else {
+                    rewriteQuestion = aiModelUtils.callWithRewriteQuestion(que, historyList.get(0).getQuery());
+                }
+            } else {
+                rewriteQuestion = aiModelUtils.callWithRewriteQuestion(que, historyList.get(0).getRewriteQuery());
+            }
+            System.out.println("查询问题:" + rewriteQuestion);
+
+            // 获取topK配置
+            if (topK == null || topK <= 0) {
+                AiEnum topKEnum = aiEnumMapper.selectOne(Wrappers.<AiEnum>lambdaQuery()
+                        .eq(AiEnum::getType, "topK"));
+                topK = Integer.parseInt(topKEnum.getValue());
+            }
+
+            Map<String, Object> searchParams = new HashMap<>();
+            searchParams.put("nprobe", 10);
+
+            // 构建过滤条件
+            StringBuilder filter = new StringBuilder();
+            if (null != filterReportType && !filterReportType.isEmpty()) {
+                filter.append("reportType == \"").append(filterReportType).append("\"");
+            }
+
+            // 执行向量检索
+            SearchResp searchResp = client.search(SearchReq.builder()
+                    .collectionName(collectionName)
+                    .filter(filter.length() > 0 ? filter.toString() : null)
+                    .data(Collections.singletonList(new FloatVec(embeddingResourceManager.embedText(rewriteQuestion))))
+                    .annsField("vector")
+                    .searchParams(searchParams)
+                    .topK(topK)
+                    .outputFields(Arrays.asList("title", "source", "text", "reportType"))
+                    .build());
+
+            List<VectorSearchRespVO.SearchResult> results = new ArrayList<>();
+
+            if (null != searchResp && CollectionUtil.isNotEmpty(searchResp.getSearchResults())) {
+                List<List<SearchResp.SearchResult>> searchResults = searchResp.getSearchResults();
+                List<SearchResp.SearchResult> scores = searchResults.get(0);
+
+                for (SearchResp.SearchResult score : scores) {
+                    Map<String, Object> entity = score.getEntity();
+                    VectorSearchRespVO.SearchResult searchResult = new VectorSearchRespVO.SearchResult();
+                    searchResult.setTitle((String) entity.get("title"));
+                    searchResult.setSource((String) entity.get("source"));
+                    searchResult.setReportType((String) entity.get("reportType"));
+                    searchResult.setText((String) entity.get("text"));
+                    searchResult.setScore((float) score.getScore());
+                    results.add(searchResult);
+                }
+            }
+
+            result.setRewriteQuestion(rewriteQuestion);
+            result.setResults(results);
+
+            // 保存记录
+            AiQueryHistory aiQueryHistory = new AiQueryHistory();
+            aiQueryHistory.setUserId(userId);
+            aiQueryHistory.setQuery(question);
+            aiQueryHistory.setRewriteQuery(rewriteQuestion);
+            aiQueryHistory.setResult("检索到" + results.size() + "条结果");
+            aiQueryHistory.setCreateAt(LocalDateTime.now());
+            aiQueryHistory.setSource("纯向量检索");
+            aiQueryHistoryMapper.insert(aiQueryHistory);
+            result.setId(aiQueryHistory.getId().toString());
+
+            return result;
+        } finally {
+            if (client != null) {
+                try {
+                    client.close();
+                } catch (Exception e) {
+                    System.err.println("关闭 Milvus 客户端时发生错误: " + e.getMessage());
+                }
+            }
+        }
     }
 }
