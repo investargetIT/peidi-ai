@@ -18,10 +18,11 @@ import cn.hutool.json.JSONObject;
 class JsonParse {
 
 	/**
-	 * 提取出 JSON 包中的加密消息
-	 * @param jsontext 待提取的json字符串
-	 * @return 提取出的加密消息字符串
-	 * @throws AesException 
+	 * Extracts encryption and routing fields from a WeCom callback JSON string.
+	 *
+	 * @param jsontext the incoming WeCom callback JSON containing "encrypt", "tousername", and "agentid" fields
+	 * @return an Object[] whose elements are: index 0 = `tousername`, index 1 = encrypted message (`encrypt`), index 2 = `agentid`
+	 * @throws AesException if the input cannot be parsed or required fields cannot be read
 	 */
 	public static Object[] extract(String jsontext) throws AesException     {
 		Object[] result = new Object[3];
@@ -43,12 +44,13 @@ class JsonParse {
 	}
 
 	/**
-	 * 生成json消息
-	 * @param encrypt 加密后的消息密文
-	 * @param signature 安全签名
-	 * @param timestamp 时间戳
-	 * @param nonce 随机字符串
-	 * @return 生成的json字符串
+	 * Create a JSON-formatted string containing the encrypted payload and its signature metadata.
+	 *
+	 * @param encrypt  the encrypted message ciphertext
+	 * @param signature the message signature (msgsignature)
+	 * @param timestamp the timestamp value as a string
+	 * @param nonce    a random string (nonce)
+	 * @return the JSON string with keys "encrypt", "msgsignature", "timestamp", and "nonce"
 	 */
 	public static String generate(String encrypt, String signature, String timestamp, String nonce) {
 

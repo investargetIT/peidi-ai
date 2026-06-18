@@ -28,6 +28,16 @@ public class LoginInterceptor implements HandlerInterceptor {
         this.httpClientService = httpClientService;
     }
 
+    /**
+     * Validates the request's authorization token (unless the URI contains "/ai/common" or "/ai/wenwen")
+     * and decides whether to allow the request to proceed.
+     *
+     * @param request  the incoming HTTP request
+     * @param response the HTTP response
+     * @param handler  the chosen handler to execute, for type inspection
+     * @return true if request processing should continue, false to abort the request
+     * @throws BusinessException if the remote check indicates the token is invalid or expired
+     */
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
 

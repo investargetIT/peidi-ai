@@ -33,6 +33,13 @@ public class GbiController {
     private static final String gbiTableMilvusCollection = "gbi_table";
     private static final String gbiExplainMilvusCollection = "gbi_explain";
 
+    /**
+     * Searches the configured Milvus collections for an answer to the given question.
+     *
+     * @param question the question text to search for
+     * @return a map of result fields to their string values returned by the search
+     * @throws Exception if the search or underlying Milvus operations fail
+     */
     @PostMapping("/question")
     @ApiOperation(value = "查询问题")
     public Map<String, String> gbiQuestion(@RequestParam String question) throws Exception {

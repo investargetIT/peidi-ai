@@ -41,6 +41,17 @@ public class GbiCallbackService implements OpenDingTalkCallbackListener<CardCall
 
     private static final String REDIS_KEY = "ding:gbiListen:";
 
+    /**
+     * Handle a DingTalk card callback to create or update an AI query history record and manage related Redis and Milvus state.
+     *
+     * <p>Depending on the callback's `cardPrivateData.actionIds`, this method either starts a new conversation (creates a new
+     * AiQueryHistory and clears a Redis key) or updates an existing AiQueryHistory (marking acceptance/rejection, inserting
+     * or deleting a Milvus record, and persisting the change).</p>
+     *
+     * @param request the DingTalk card callback request; expected to contain `cardPrivateData.actionIds` and, for updates,
+     *                `cardPrivateData.params.id`
+     * @return a new empty {@code JSONObject}
+     */
     @Override
     public JSONObject execute(CardCallbackRequest request) {
         String actionIds = JSONObject.parseObject(request.getContent()).getJSONObject("cardPrivateData").getString("actionIds");
@@ -84,6 +95,15 @@ public class GbiCallbackService implements OpenDingTalkCallbackListener<CardCall
 
     }
 
+    /**
+     * Inserts a single record derived from the given query history into the specified Milvus collection and returns the record's generated numeric id.
+     *
+     * The inserted record contains the query rewrite, result, source, and an embedding vector produced by the embedding resource manager. If an error occurs while writing or closing the Milvus client, the method logs the error and still returns the generated id.
+     *
+     * @param queryHistory  the AI query history whose data will be embedded and inserted
+     * @param collectionName the name of the Milvus collection to insert the record into
+     * @return the generated numeric id for the inserted Milvus record (returned even if the insert operation fails)
+     */
     public Long processMilvus(AiQueryHistory queryHistory, String collectionName) {
         MilvusClientV2 client = null;
         Long id = UUIDConverter.generateSafeUUIDAsLong();

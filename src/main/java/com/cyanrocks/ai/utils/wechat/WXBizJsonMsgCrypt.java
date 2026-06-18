@@ -21,12 +21,14 @@ public class WXBizJsonMsgCrypt {
     String receiveid;
 
     /**
-     * 构造函数
-     * @param token 企业微信后台，开发者设置的token
-     * @param encodingAesKey 企业微信后台，开发者设置的EncodingAESKey
-     * @param receiveid, 不同场景含义不同，详见文档
+     * Create a WXBizJsonMsgCrypt configured with the given token, EncodingAESKey, and receiveid.
      *
-     * @throws AesException 执行失败，请查看该异常的错误码和具体的错误信息
+     * The provided EncodingAESKey must be a 43-character string; it will be base64-decoded to derive the AES key material.
+     *
+     * @param token         the developer token configured in the Enterprise WeChat backend used for signature generation
+     * @param encodingAesKey the 43-character EncodingAESKey configured in the Enterprise WeChat backend (base64 string)
+     * @param receiveid     scene-specific identifier to be validated against decrypted payloads
+     * @throws AesException if the provided EncodingAESKey length is not 43 characters (IllegalAesKey) or other initialization failures occur
      */
     public WXBizJsonMsgCrypt(String token, String encodingAesKey, String receiveid) throws AesException {
         if (encodingAesKey.length() != 43) {
@@ -38,7 +40,12 @@ public class WXBizJsonMsgCrypt {
         aesKey = Base64.decodeBase64(encodingAesKey + "=");
     }
 
-    // 生成4个字节的网络字节序
+    /**
+     * Encode an integer into a 4-byte array using network (big-endian) byte order.
+     *
+     * @param sourceNumber the integer to encode
+     * @return a 4-byte array containing the big-endian representation of {@code sourceNumber}
+     */
     byte[] getNetworkBytesOrder(int sourceNumber) {
         byte[] orderBytes = new byte[4];
         orderBytes[3] = (byte) (sourceNumber & 0xFF);
@@ -48,7 +55,12 @@ public class WXBizJsonMsgCrypt {
         return orderBytes;
     }
 
-    // 还原4个字节的网络字节序
+    /**
+     * Reconstructs a 32-bit integer from a 4-byte array interpreted in network (big-endian) byte order.
+     *
+     * @param orderBytes a 4-byte array containing the integer in big-endian (network) order
+     * @return the integer value represented by the four bytes
+     */
     int recoverNetworkBytesOrder(byte[] orderBytes) {
         int sourceNumber = 0;
         for (int i = 0; i < 4; i++) {
@@ -58,7 +70,11 @@ public class WXBizJsonMsgCrypt {
         return sourceNumber;
     }
 
-    // 随机生成16位字符串
+    /**
+     * Produces a 16-character random string composed of upper- and lower-case letters and digits.
+     *
+     * @return a newly generated 16-character alphanumeric string
+     */
     String getRandomStr() {
         String base = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
         Random random = new Random();
@@ -71,11 +87,14 @@ public class WXBizJsonMsgCrypt {
     }
 
     /**
-     * 对明文进行加密.
+     * Encrypts a plaintext payload and returns it as a Base64-encoded ciphertext.
      *
-     * @param text 需要加密的明文
-     * @return 加密后base64编码的字符串
-     * @throws AesException aes加密失败
+     * The payload is constructed as: `randomStr || 4-byte network-order(text length) || text || receiveid`, then PKCS7-padded and encrypted with AES/CBC/NoPadding using the instance key and IV. The resulting ciphertext is Base64-encoded.
+     *
+     * @param randomStr a 16-character random prefix included at the start of the payload
+     * @param text the plaintext JSON/text to encrypt
+     * @return the Base64-encoded ciphertext
+     * @throws AesException if an error occurs during encryption
      */
     String encrypt(String randomStr, String text) throws AesException {
         ByteGroup byteCollector = new ByteGroup();
@@ -118,11 +137,11 @@ public class WXBizJsonMsgCrypt {
     }
 
     /**
-     * 对密文进行解密.
+     * Decrypts a Base64-encoded AES/CBC/NoPadding ciphertext, extracts the inner JSON payload, and validates the configured receiveid.
      *
-     * @param text 需要解密的密文
-     * @return 解密得到的明文
-     * @throws AesException aes解密失败
+     * @param text Base64-encoded ciphertext produced by the corresponding encrypt routine
+     * @return the decrypted JSON content extracted from the payload
+     * @throws AesException if AES decryption or Base64 decoding fails, if padding or buffer parsing is invalid, or if the decrypted receiveid does not match the configured receiveid
      */
     String decrypt(String text) throws AesException {
         byte[] original;
@@ -170,19 +189,13 @@ public class WXBizJsonMsgCrypt {
     }
 
     /**
-     * 将企业微信回复用户的消息加密打包.
-     * <ol>
-     * 	<li>对要发送的消息进行AES-CBC加密</li>
-     * 	<li>生成安全签名</li>
-     * 	<li>将消息密文和安全签名打包成json格式</li>
-     * </ol>
+     * Encrypts a reply message, computes its SHA1 signature, and returns the packaged JSON ready to be sent to Enterprise WeChat.
      *
-     * @param replyMsg 企业微信待回复用户的消息，json格式的字符串
-     * @param timeStamp 时间戳，可以自己生成，也可以用URL参数的timestamp
-     * @param nonce 随机串，可以自己生成，也可以用URL参数的nonce
-     *
-     * @return 加密后的可以直接回复用户的密文，包括msg_signature, timestamp, nonce, encrypt的json格式的字符串
-     * @throws AesException 执行失败，请查看该异常的错误码和具体的错误信息
+     * @param replyMsg the reply payload as a JSON-formatted string
+     * @param timeStamp the timestamp to include in the package; if an empty string is provided the current system time in milliseconds is used
+     * @param nonce a random string to include in the package
+     * @return a JSON-formatted string containing `msg_signature`, `timestamp`, `nonce`, and `encrypt`
+     * @throws AesException if encryption, signature generation, or packaging fails
      */
     public String EncryptMsg(String replyMsg, String timeStamp, String nonce) throws AesException {
         // 加密
@@ -202,20 +215,19 @@ public class WXBizJsonMsgCrypt {
     }
 
     /**
-     * 检验消息的真实性，并且获取解密后的明文.
-     * <ol>
-     * 	<li>利用收到的密文生成安全签名，进行签名验证</li>
-     * 	<li>若验证通过，则提取json中的加密消息</li>
-     * 	<li>对消息进行解密</li>
-     * </ol>
+     * Verify the message signature and return the decrypted plaintext.
      *
-     * @param msgSignature 签名串，对应URL参数的msg_signature
-     * @param timeStamp 时间戳，对应URL参数的timestamp
-     * @param nonce 随机串，对应URL参数的nonce
-     * @param postData 密文，对应POST请求的数据
+     * Verifies the SHA1 signature computed from the configured token, the provided
+     * timestamp, nonce, and the ciphertext contained in postData. If signature
+     * verification succeeds, extracts the encrypted payload from postData, decrypts
+     * it, and returns the resulting plaintext.
      *
-     * @return 解密后的原文
-     * @throws AesException 执行失败，请查看该异常的错误码和具体的错误信息
+     * @param msgSignature signature string from the URL parameter `msg_signature`
+     * @param timeStamp timestamp from the URL parameter `timestamp`
+     * @param nonce random string from the URL parameter `nonce`
+     * @param postData POST body containing the encrypted message (JSON)
+     * @return the decrypted plaintext message
+     * @throws AesException if signature validation or decryption fails; check the exception's error code for details
      */
     public String DecryptMsg(String msgSignature, String timeStamp, String nonce, String postData)
             throws AesException {
@@ -240,14 +252,14 @@ public class WXBizJsonMsgCrypt {
     }
 
     /**
-     * 验证URL
-     * @param msgSignature 签名串，对应URL参数的msg_signature
-     * @param timeStamp 时间戳，对应URL参数的timestamp
-     * @param nonce 随机串，对应URL参数的nonce
-     * @param echoStr 随机串，对应URL参数的echostr
+     * Verify the URL signature and decrypt the provided `echostr`.
      *
-     * @return 解密之后的echostr
-     * @throws AesException 执行失败，请查看该异常的错误码和具体的错误信息
+     * @param msgSignature the `msg_signature` URL parameter to verify
+     * @param timeStamp the `timestamp` URL parameter used in signature verification
+     * @param nonce the `nonce` URL parameter used in signature verification
+     * @param echoStr the `echostr` URL parameter (Base64-encoded encrypted payload)
+     * @return the decrypted `echostr` content
+     * @throws AesException if signature validation fails or decryption cannot be completed
      */
     public String VerifyURL(String msgSignature, String timeStamp, String nonce, String echoStr)
             throws AesException {

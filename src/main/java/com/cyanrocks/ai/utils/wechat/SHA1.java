@@ -19,13 +19,14 @@ import java.util.Arrays;
 class SHA1 {
 
 	/**
-	 * 用SHA1算法生成安全签名
-	 * @param token 票据
-	 * @param timestamp 时间戳
-	 * @param nonce 随机字符串
-	 * @param encrypt 密文
-	 * @return 安全签名
-	 * @throws AesException 
+	 * Generate a SHA-1 signature from the given token, timestamp, nonce, and encrypted message.
+	 *
+	 * @param token     the token used in signature generation
+	 * @param timestamp the timestamp string
+	 * @param nonce     a random string
+	 * @param encrypt   the encrypted message string
+	 * @return          the lowercase hexadecimal SHA-1 digest of the concatenation of the inputs after lexicographic sorting
+	 * @throws AesException if an error occurs while computing the signature
 	 */
 	public static String getSHA1(String token, String timestamp, String nonce, String encrypt) throws AesException
 			  {

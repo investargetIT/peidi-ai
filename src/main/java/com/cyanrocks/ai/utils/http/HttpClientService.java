@@ -36,6 +36,14 @@ public class HttpClientService {
 
     private static final Logger logger = LoggerFactory.getLogger(HttpClientService.class);
 
+    /**
+     * Execute an HTTP GET to the specified URL using the injected HTTP client, applying the provided headers and client context.
+     *
+     * @param url the target request URL
+     * @param headers optional request headers to include (may be null or empty)
+     * @param localContext optional HttpClientContext to use for execution (may be null)
+     * @return an HttpResponseContent containing the response status code and body content
+     */
     public HttpResponseContent doGet(String url, Map<String, String> headers, HttpClientContext localContext) {
         if (logger.isDebugEnabled()) {
             logger.debug("url:" + url + ",headers:" + headers);
@@ -55,6 +63,14 @@ public class HttpClientService {
         return result;
     }
 
+    /**
+     * Download the response body from the given URL and return it as a byte array.
+     *
+     * @param url the request URL
+     * @param headers optional HTTP request headers to include (may be null)
+     * @return a byte array containing the response body; an empty array if the response has no entity
+     * @throws RuntimeException if an I/O or other error occurs while downloading (wrapped with message "Download failed")
+     */
     public byte[] doGetBytes(String url, Map<String, String> headers) {
         // 使用 HttpClient 直接读取 InputStream → byte[]
         try (CloseableHttpClient client = HttpClients.createDefault()) {
@@ -75,6 +91,16 @@ public class HttpClientService {
         return new byte[0];
     }
 
+    /**
+     * Performs an HTTP GET to the specified URL, appending optional query parameters and headers.
+     *
+     * @param url the request URL
+     * @param headers headers to include on the request, or null if none
+     * @param params query parameters to append to the URL, or null if none
+     * @param context the HttpClientContext to use for execution, or null to use a default context
+     * @return an HttpResponseContent containing the response status code and body content
+     * @throws RuntimeException if the provided URL is invalid
+     */
     public HttpResponseContent doGet(String url, Map<String, String> headers, Map<String, String> params,
         HttpClientContext context) {
         HttpGet httpGet;

@@ -23,6 +23,11 @@ public class EvaluationController {
     @Autowired
     private AiEvaluationService aiEvaluationService;
 
+    /**
+     * Generate an AI reply for the given product evaluation and submit it for processing.
+     *
+     * @param evaluation the product evaluation payload used to generate the AI reply
+     */
     @PostMapping("/new")
     @ApiOperation(value = "生成ai回复")
     public void newEvaluation(@RequestBody BiGoodsEvaluation evaluation) {

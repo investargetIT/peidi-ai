@@ -47,6 +47,19 @@ public class LlmCallbackService implements OpenDingTalkCallbackListener<CardCall
 
     private static final String REDIS_KEY = "ding:llmListen:";
 
+    /**
+     * Handle a DingTalk card callback by applying the indicated action to AI query history and related resources.
+     *
+     * <p>Depending on the callback's action id this method will:
+     * <ul>
+     *   <li>for the "start new conversation" action: insert a new AiQueryHistory record and remove the user's Redis key;</li>
+     *   <li>for the "accept" action: mark the history entry as accepted and create/update its Milvus reference;</li>
+     *   <li>for the "reject" action: mark the history entry as not accepted, delete its Milvus reference if present, and clear the stored Milvus id.</li>
+     * </ul>
+     * </p>
+     *
+     * @return an empty JSONObject as the callback response payload
+     */
     @Override
     public JSONObject execute(CardCallbackRequest request) {
         String actionIds = JSONObject.parseObject(request.getContent()).getJSONObject("cardPrivateData").getString("actionIds");
