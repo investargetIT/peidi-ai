@@ -70,15 +70,7 @@ public class WenwenControler {
     @Resource
     private SiyuQuestionService siyuQuestionService;
 
-    /**
-     * Validate the WeCom robot callback URL and return the decrypted echo string for verification.
-     *
-     * @param msgSignature the message signature from WeCom request
-     * @param timestamp    the timestamp from WeCom request
-     * @param nonce        the nonce from WeCom request
-     * @param echostr      the encrypted echo string provided by WeCom for URL verification
-     * @return the decrypted echo string expected by WeCom for successful verification, or an empty string on failure
-     */
+
     @GetMapping("/wechat/question")
     @ApiOperation(value = "企业微信机器人验证url")
     public String wechatVerificationUrl(@RequestParam("msg_signature") String msgSignature,
@@ -102,15 +94,6 @@ public class WenwenControler {
         return "";
     }
 
-    /**
-     * Handle incoming enterprise WeCom robot messages: process feedback events that update query acceptance and Milvus records, forward user text messages to RabbitMQ for processing, and send an immediate encrypted stream reply indicating the query is in progress.
-     *
-     * @param msgSignature the WeCom message signature from the request query string
-     * @param timestamp the WeCom timestamp from the request query string
-     * @param nonce the WeCom nonce from the request query string
-     * @param requestBody the encrypted request payload received from WeCom
-     * @return the encrypted reply message to return to WeCom, or an empty string when no reply is required or on error
-     */
     @PostMapping("/wechat/question")
     @ApiOperation(value = "企业微信机器人问问题")
     public String wechatQuestion(@RequestParam("msg_signature") String msgSignature,
@@ -277,15 +260,6 @@ public class WenwenControler {
         return "";
     }
 
-    /**
-     * Validate an enterprise WeChat (customer service) callback and produce the verification echo.
-     *
-     * @param msgSignature the WeChat msg_signature query parameter used to verify the request
-     * @param timestamp    the WeChat timestamp query parameter
-     * @param nonce        the WeChat nonce query parameter
-     * @param echostr      the WeChat echostr value to be verified and echoed on success
-     * @return the verified echo string required by WeChat when verification succeeds, or an empty string on failure
-     */
     @GetMapping("/kefu/question")
     @ApiOperation(value = "企业微信客服验证url")
     public String kefuVerificationUrl(@RequestParam("msg_signature") String msgSignature,
@@ -309,17 +283,6 @@ public class WenwenControler {
         return "";
     }
 
-    /**
-     * Processes an incoming WeCom customer-service webhook: decrypts the request, retrieves recent conversation messages,
-     * extracts the latest text question and any images uploaded after the previous text from the same external user,
-     * sends an immediate "正在查询中，请稍候..." acknowledgement to the user, and publishes the assembled question payload
-     * (including image media IDs) to the KEFU RabbitMQ processing queue.
-     *
-     * @param msgSignature the message signature from WeCom used for decryption
-     * @param timestamp    the timestamp from WeCom used for decryption
-     * @param nonce        the nonce from WeCom used for decryption
-     * @param requestBody  the raw encrypted request body received from WeCom
-     * @return an empty string (endpoint responds with an empty body)
     @PostMapping("/kefu/question")
     @ApiOperation(value = "企业微信客服问问题")
     public String kefuQuestion(@RequestParam("msg_signature") String msgSignature,
@@ -335,19 +298,6 @@ public class WenwenControler {
             Map<String, Object> msgMap = XmlUtil.xmlToMap(sMsg);
             String jsonStr = JSONUtil.toJsonStr(msgMap);
             JSONObject msgJson = JSONObject.parseObject(jsonStr);
-            String openKfId = msgJson.getString("OpenKfId");
-            if (siyuOpenKfId.equals(openKfId)) {
-                System.out.println("识别为私域运营客服消息");
-                // 异步处理，立即返回 success 防止微信重复回调
-                CompletableFuture.runAsync(() -> {
-                    try {
-                        siyuQuestionService.getAnswer(msgSignature, timestamp, nonce, requestBody);
-                    } catch (Exception e) {
-                        System.err.println("异步处理私域运营客服消息失败: " + e.getMessage());
-                    }
-                });
-                return "success";
-            }
             //获取access_token
             String token = stringRedisTemplate.opsForValue().get(REDIS_KEY);
             if (null == token){
@@ -484,5 +434,4 @@ public class WenwenControler {
         }
         return "";
     }
-
 }
