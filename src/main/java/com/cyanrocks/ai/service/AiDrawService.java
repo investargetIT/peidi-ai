@@ -60,6 +60,8 @@ public class AiDrawService extends ServiceImpl<AiDrawMapper, AiDraw> {
     private String dashscopeApiKey;
     @Value("${qnaigc.api-key}")
     private String qnaigcApiKey;
+    @Value("${coding-plan.api-key}")
+    private String codingPlanApiKey;
 
     @Autowired
     @Qualifier("okHttpClient")
@@ -331,11 +333,11 @@ public class AiDrawService extends ServiceImpl<AiDrawMapper, AiDraw> {
         return parseResult.toString();
     }
 
-    public String transferAliyun(String jsonParams) {
+    public String transferAliyun(AiDraw aiDraw) {
         String apiUrl = "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation";
         Request request = new Request.Builder()
                 .url(apiUrl)
-                .post(RequestBody.create(jsonParams, JSON))
+                .post(RequestBody.create(aiDraw.getUrlParam(), JSON))
                 .addHeader("Authorization", "Bearer " + dashscopeApiKey)
                 .addHeader("Content-Type", "application/json")
                 .build();
@@ -347,6 +349,11 @@ public class AiDrawService extends ServiceImpl<AiDrawMapper, AiDraw> {
             String body = response.body().string();
             log.info("Aliyun response: {}", body);
             JsonNode root = objectMapper.readTree(body);
+
+            //不解析直接返回
+            if (StringUtils.isNotEmpty(aiDraw.getResultImage()) && aiDraw.getResultImage().equals("false")) {
+                return root.toString();
+            }
             JsonNode choices = root.path("output").path("choices");
             if (choices.isArray() && choices.size() > 0) {
                 JsonNode content = choices.get(0).path("message").path("content");
@@ -367,11 +374,11 @@ public class AiDrawService extends ServiceImpl<AiDrawMapper, AiDraw> {
         }
     }
 
-    public String transferQnaigc(String jsonParams) {
+    public String transferQnaigc(AiDraw aiDraw) {
         String apiUrl = "https://api.qnaigc.com/v1/images/edits";
         Request request = new Request.Builder()
                 .url(apiUrl)
-                .post(RequestBody.create(jsonParams, JSON))
+                .post(RequestBody.create(aiDraw.getUrlParam(), JSON))
                 .addHeader("Authorization", "Bearer " + qnaigcApiKey)
                 .addHeader("Content-Type", "application/json")
                 .build();
@@ -443,5 +450,29 @@ public class AiDrawService extends ServiceImpl<AiDrawMapper, AiDraw> {
             sortSb = searchSqlUtils.buildSortSql(sortReqs);
         }
         return baseMapper.getMaterialsPage(new Page<>(pageNo, pageSize), searchSb, sortSb);
+    }
+
+    public String transferCodingPlan(AiDraw aiDraw) {
+        String apiUrl = "https://coding.dashscope.aliyuncs.com/v1/chat/completions";
+        Request request = new Request.Builder()
+                .url(apiUrl)
+                .post(RequestBody.create(aiDraw.getUrlParam(), JSON))
+                .addHeader("Authorization", "Bearer " + codingPlanApiKey)
+                .addHeader("Content-Type", "application/json")
+                .build();
+        try (Response response = okHttpClient.newCall(request).execute()) {
+            if (!response.isSuccessful()) {
+                String errBody = response.body() != null ? response.body().string() : "";
+                throw new BusinessException(500, "CodingPlan API error: " + response.code() + " " + errBody);
+            }
+            String body = response.body().string();
+            log.info("CodingPlan response: {}", body);
+            JsonNode root = objectMapper.readTree(body);
+            return root.toString();
+        } catch (BusinessException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new BusinessException(500, "transferCodingPlan error: " + e.getMessage());
+        }
     }
 }

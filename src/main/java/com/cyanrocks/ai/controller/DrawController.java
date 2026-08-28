@@ -179,10 +179,19 @@ public class DrawController {
         return aiDrawService.transferGemini(aiDraw.getUrlParam());
     }
 
+
     @PostMapping("/transfer/aliyun")
     @ApiOperation(value = "中转阿里云百炼wan2.7-image模型")
     public String transferAliyun(@RequestBody AiDraw aiDraw) {
-        return aiDrawService.transferAliyun(aiDraw.getUrlParam());
+        return aiDrawService.transferAliyun( aiDraw);
+    }
+
+    @PostMapping("/transfer/coding/plan")
+    @ApiOperation(value = "中转到codingPlan")
+    public String codingPlan(@RequestBody AiDraw aiDraw) {
+    //todo 1.
+
+        return aiDrawService.transferCodingPlan( aiDraw);
     }
 
     @PostMapping("/transfer/qnaigc")
@@ -192,7 +201,7 @@ public class DrawController {
         if (StringUtils.isBlank(aiDraw.getUrlParam())) {
             throw new BusinessException(400, "urlParam 不能为空");
         }
-        return aiDrawService.transferQnaigc(aiDraw.getUrlParam());
+        return aiDrawService.transferQnaigc(aiDraw);
 
     }
 }
