@@ -19,10 +19,10 @@ class PKCS7Encoder {
 	static int BLOCK_SIZE = 32;
 
 	/**
-	 * 获得对明文进行补位填充的字节.
-	 * 
-	 * @param count 需要进行填充补位操作的明文字节个数
-	 * @return 补齐用的字节数组
+	 * Generate PKCS#7-style padding bytes for a plaintext of the given length.
+	 *
+	 * @param count the number of plaintext bytes to be padded
+	 * @return a byte array of padding bytes whose length is between 1 and BLOCK_SIZE (inclusive); each byte's value equals the padding length
 	 */
 	static byte[] encode(int count) {
 		// 计算需要填充的位数
@@ -40,10 +40,13 @@ class PKCS7Encoder {
 	}
 
 	/**
-	 * 删除解密后明文的补位字符
-	 * 
-	 * @param decrypted 解密后的明文
-	 * @return 删除补位字符后的明文
+	 * Remove PKCS#7-style padding bytes from a decrypted plaintext block.
+	 *
+	 * The padding length is taken from the last byte of the input and must be between 1 and 32;
+	 * if the value is outside that range it is treated as zero (no padding removed).
+	 *
+	 * @param decrypted the decrypted plaintext bytes that may include PKCS#7 padding
+	 * @return a new byte array with the padding bytes removed
 	 */
 	static byte[] decode(byte[] decrypted) {
 		int pad = (int) decrypted[decrypted.length - 1];
@@ -54,10 +57,10 @@ class PKCS7Encoder {
 	}
 
 	/**
-	 * 将数字转化成ASCII码对应的字符，用于对明文进行补码
-	 * 
-	 * @param a 需要转化的数字
-	 * @return 转化得到的字符
+	 * Convert an integer to a single character derived from its low 8 bits for use as a padding byte.
+	 *
+	 * @param a the integer whose low 8 bits will be converted into a padding character
+	 * @return a character representing the low 8 bits of the input integer
 	 */
 	static char chr(int a) {
 		byte target = (byte) (a & 0xFF);

@@ -50,6 +50,19 @@ public class GbiManager {
         this.client = client;
     }
 
+    /**
+     * Streams a data-analysis GBI run for the given query, converts incoming events into card updates, finalizes the AI card, and persists the session id and query to Redis.
+     *
+     * <p>The method applies `streamingFunction` to emit incremental textual updates to the provided card parameter object and uses `updateFunction` to push structured card data (tables/charts) when available. After the stream completes it ensures the AI card is finished and writes `sessionId##query` to Redis under the provided key.</p>
+     *
+     * @param query the natural-language query to run
+     * @param cardParamBO the card parameter object to update and stream content from
+     * @param streamingFunction function that accepts `cardParamBO` and emits incremental textual updates
+     * @param updateFunction function that accepts `cardParamBO` and applies structured card-data updates (e.g., table/chart)
+     * @param stringRedisTemplate Redis template used to read/write session state
+     * @param redisKey Redis key under which to store the session id and query (stored as `sessionId##query`)
+     * @throws InterruptedException if the underlying streaming iterator is interrupted during processing
+     */
     public void streamCallWithCallback(String query, GbiCardParamBO cardParamBO, Function<GbiCardParamBO, String> streamingFunction, Function<GbiCardParamBO, String> updateFunction, StringRedisTemplate stringRedisTemplate, String redisKey) throws InterruptedException {
         JSONObject agentCtrlParam = new JSONObject();
         agentCtrlParam.put("enableChatMode", true);
@@ -117,6 +130,19 @@ public class GbiManager {
         stringRedisTemplate.opsForValue().set(redisKey, sessionId+"##"+query);
     }
 
+    /**
+     * Executes a GBI-enhanced search for the given query, streams progress and results via the provided callbacks,
+     * persists the query session to Redis, and marks the AI card as finished.
+     *
+     * @param query              the natural-language query or prompt to analyze
+     * @param cardParamBO        the card parameter object that will be updated and passed to streaming/update callbacks
+     * @param streamingFunction  function invoked repeatedly to push incremental text updates from the analysis; accepts the updated `cardParamBO`
+     * @param updateFunction     function invoked to apply structured card data updates (e.g., ID or payload) from the analysis; accepts the updated `cardParamBO`
+     * @param stringRedisTemplate Redis template used to persist a session or query mapping
+     * @param redisKey           the Redis key under which the session or query should be stored
+     * @param userId             identifier of the user requesting the query, forwarded to the GBI search
+     * @throws Exception if an unexpected error occurs while performing the search, applying updates, or persisting to Redis
+     */
     public void streamCallWithCallbackNew(String query, GbiCardParamBO cardParamBO, Function<GbiCardParamBO, String> streamingFunction, Function<GbiCardParamBO, String> updateFunction, StringRedisTemplate stringRedisTemplate, String redisKey,String userId) throws Exception {
         Map<String, String> result = new HashMap<>();
         try {

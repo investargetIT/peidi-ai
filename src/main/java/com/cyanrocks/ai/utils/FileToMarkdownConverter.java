@@ -90,6 +90,16 @@ public class FileToMarkdownConverter {
     @Autowired
     private StringRedisTemplate redisTemplate;
 
+    /**
+     * Ingests an uploaded file, extracts or generates text/markdown (synchronously or by enqueuing PDF chunks), persists an initial DB record, uploads artifacts to OSS, and writes extracted data into Milvus.
+     *
+     * Processes the provided MultipartFile according to its detected MIME type: non-PDF files are converted and processed immediately; PDFs are split into overlapping chunks and either processed immediately if single-chunk or enqueued to RabbitMQ for asynchronous chunk processing. The method also uploads the original file to OSS and inserts or updates records used for later Milvus ingestion.
+     *
+     * @param file       the uploaded file to process
+     * @param request    JSON string representing an AiMilvusPdfMarkdown request object (used to build DB/Milvus records)
+     * @param milvusFile identifier or collection name used when persisting results into Milvus
+     * @throws BusinessException when a file with the same title already exists, when chunked-PDF processing detects an existing Milvus record, or when saving processed results to Milvus fails
+     */
     public void processFile(MultipartFile file, String request, String milvusFile) {
         //防止重复上传
         if (CollectionUtil.isNotEmpty(aiMilvusPdfMarkdownMapper.selectList(Wrappers.<AiMilvusPdfMarkdown>lambdaQuery()

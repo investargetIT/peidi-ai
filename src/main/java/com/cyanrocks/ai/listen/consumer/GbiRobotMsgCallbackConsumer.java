@@ -35,9 +35,13 @@ public class GbiRobotMsgCallbackConsumer implements OpenDingTalkCallbackListener
     private static final String REDIS_KEY = "ding:streamCard2:";
     private static final String REDIS_KEY1 = "ding:gbiListen:";
 
-    /*
-     * @param request
-     * @return
+    /**
+     * Handle an incoming DingTalk callback payload, deduplicate repeated messages, send an initial card, and drive streaming card updates.
+     *
+     * <p>Extracts `senderStaffId` and `text.content` from the provided `request`. If the same content was recently processed for the sender (within 10 minutes) the method returns early. Otherwise it records the content in Redis, sends an initial card, and invokes streaming and update callbacks to push incremental card updates via the `gbiManager`. If an exception occurs while processing, the deduplication cache for this message is removed.</p>
+     *
+     * @param request a JSONObject containing the callback payload; must include `senderStaffId` (sender user id) and `text.content` (message text)
+     * @return an empty JSONObject
      */
     @Override
     public JSONObject execute(JSONObject request) {

@@ -27,6 +27,16 @@ public class GoodsReviewController {
     private GoodsReviewService goodsReviewService;
 
 
+    /**
+     * Answer a product-related question by querying the goods_review collection.
+     *
+     * @param question the natural-language question to ask about the product
+     * @param product identifier or name of the primary product to query
+     * @param productReviewTime optional time filter for reviews of the primary product (e.g., timestamp or date range)
+     * @param compareProduct optional identifier or name of a product to compare against the primary product
+     * @param compareProductReviewTime optional time filter for reviews of the comparison product (e.g., timestamp or date range)
+     * @return a GoodsReviewMilvus object containing the answer and related retrieval/metadata from the goods_review collection
+     */
     @GetMapping("/question")
     @ApiOperation(value = "问题")
     public GoodsReviewMilvus question(@RequestParam(value = "question") String question,
@@ -37,6 +47,16 @@ public class GoodsReviewController {
         return goodsReviewService.question(question, product, productReviewTime, compareProduct, compareProductReviewTime,"goods_review");
     }
 
+    /**
+     * Estimates how long it will take to prepare an answer to a question about product reviews.
+     *
+     * @param question the natural-language question to evaluate
+     * @param product identifier or name of the primary product to query reviews for
+     * @param productReviewTime optional time filter for the primary product's reviews (e.g., date or time range)
+     * @param compareProduct optional identifier or name of a secondary product to compare against
+     * @param compareProductReviewTime optional time filter for the comparison product's reviews (e.g., date or time range)
+     * @return the estimated processing time in milliseconds
+     */
     @GetMapping("/question-pre")
     @ApiOperation(value = "问题准备预估处理时间")
     public Integer questionPre(@RequestParam(value = "question") String question,

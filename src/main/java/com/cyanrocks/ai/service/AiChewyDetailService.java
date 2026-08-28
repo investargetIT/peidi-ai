@@ -65,6 +65,19 @@ public class AiChewyDetailService extends ServiceImpl<AiChewyDetailMapper, AiChe
     @Autowired
     private EmbeddingResourceManager embeddingResourceManager;
 
+    /**
+     * Builds and executes a filtered query against the Milvus collection "chewy_parse_new" and returns the matching records.
+     *
+     * @param keyword   product name substring to match (ignored if null or empty)
+     * @param function  primary function value to match exactly (ignored if null or empty)
+     * @param score     if true, only include records with healthScore greater than 8
+     * @param redFlag   if true, only include records whose redFlags equal "[]"
+     * @return a JSONObject with keys:
+     *         <ul>
+     *           <li>"data" — a JSONArray of parsed record objects from the collection</li>
+     *           <li>"cnt"  — the total count value (currently set to 9555)</li>
+     *         </ul>
+     */
     public JSONObject getChewyList(String keyword, String function, Boolean score, Boolean redFlag){
         JSONObject result = new JSONObject();
 
@@ -100,6 +113,12 @@ public class AiChewyDetailService extends ServiceImpl<AiChewyDetailMapper, AiChe
         return result;
     }
 
+    /**
+     * Prints the distinct `primaryFunction` values from the Milvus collection "chewy_parse_new".
+     *
+     * <p>Connects to Milvus using the configured URI, queries records with filter `id > 0`, collects unique
+     * `primaryFunction` values, and writes them as a JSON array to standard output.
+     */
     public void test(){
         ConnectConfig config = ConnectConfig.builder()
                 .uri(milvusUri)
@@ -120,6 +139,14 @@ public class AiChewyDetailService extends ServiceImpl<AiChewyDetailMapper, AiChe
         System.out.println(JSONObject.toJSONString(function));
     }
 
+    /**
+     * Copies and enriches records from the "chewy_parse" Milvus collection into "chewy_parse_new".
+     *
+     * For each entity in "chewy_parse" that has no matching id in "chewy_parse_new", extracts the
+     * `analysis` object from the entity's `text`, sets or overrides `productName`, `primaryFunction`,
+     * `healthScore`, `redFlags`, and `brand` (via getBrand), and inserts the resulting record into
+     * "chewy_parse_new".
+     */
     public void test1(){
         ConnectConfig config = ConnectConfig.builder()
                 .uri(milvusUri)
@@ -164,6 +191,11 @@ public class AiChewyDetailService extends ServiceImpl<AiChewyDetailMapper, AiChe
         }
     }
 
+    /**
+     * Processes every record in the Milvus collection "chewy_parse" concurrently by delegating each record to {@code processQueryResult}.
+     *
+     * Uses a fixed thread pool with up to 10 threads, waits for all tasks to complete, logs any failure, and shuts down the executor.
+     */
     public void test2(){
         ConnectConfig config = ConnectConfig.builder()
                 .uri(milvusUri)
@@ -193,6 +225,19 @@ public class AiChewyDetailService extends ServiceImpl<AiChewyDetailMapper, AiChe
         }
     }
 
+    /**
+     * Transforms a single Milvus query result into the target schema and inserts it into the
+     * "chewy_parse_new" collection if a record with the same `id` does not already exist.
+     *
+     * The method extracts the `text` field from the provided query result, reads its `analysis`
+     * object, and populates fields such as `productName`, `primaryFunction`, `healthScore`,
+     * `redFlags`, and `brand` (obtained by calling `getBrand(...)`) before inserting the
+     * constructed record into the "chewy_parse_new" collection. Any exception thrown during
+     * processing is caught and logged without propagating.
+     *
+     * @param queryResult the Milvus query result to process; expected to contain `id` and `text` fields
+     * @param client the Milvus client used to query and insert into collections
+     */
     private void processQueryResult(QueryResp.QueryResult queryResult, MilvusClientV2 client) {
         try {
             Map<String, Object> entity = queryResult.getEntity();
@@ -256,6 +301,16 @@ public class AiChewyDetailService extends ServiceImpl<AiChewyDetailMapper, AiChe
         }
     }
 
+    /**
+     * Extracts the brand name from a Chewy product title.
+     *
+     * <p>Attempts to obtain a single brand string by sending the title to an external brand-extraction service.
+     * The method strips any embedded `<think>...</think>` fragments from the returned text. It will retry the
+     * request up to three times before giving up.
+     *
+     * @param text the full product title to extract the brand from
+     * @return the extracted brand name, or {@code null} if extraction fails after retries
+     */
     public String getBrand(String text) {
         final int MAX_RETRIES = 3;
         for (int attempt = 0; attempt < MAX_RETRIES; attempt++) {
@@ -361,6 +416,17 @@ public class AiChewyDetailService extends ServiceImpl<AiChewyDetailMapper, AiChe
         return null;
     }
 
+    /**
+     * Batches all AiChewyDetail records into token-limited groups, requests parsing for each batch,
+     * and writes the parsed results as embeddings into the Milvus collection "chewy_parse".
+     *
+     * <p>For each processed batch this method:
+     * - serializes the batch to JSON and checks the token estimate against a 30000-token threshold,
+     * - invokes the parsing model to obtain parsed results for the batch,
+     * - converts each parsed result to a JSON string and inserts it into Milvus.
+     *
+     * <p>Also prints the last record id of each batch to standard output.
+     */
     public void parse(){
         List<AiChewyDetail> recordList = baseMapper.selectAll();
         List<AiChewyDetail> parseList = new ArrayList<>();
@@ -384,6 +450,14 @@ public class AiChewyDetailService extends ServiceImpl<AiChewyDetailMapper, AiChe
         }
     }
 
+    /**
+     * Inserts a single record into the specified Milvus collection containing the provided text, its computed vector, and an input tag, and returns the generated record id.
+     *
+     * @param embedding     the text payload to store and to compute the vector from
+     * @param collectionName the Milvus collection to insert into
+     * @param input         an auxiliary input string to store alongside the record
+     * @return the generated long id for the inserted record; the id is returned even if the insert fails
+     */
     public Long processMilvus(String embedding, String collectionName,String input) {
         MilvusClientV2 client = null;
         Long id = UUIDConverter.generateSafeUUIDAsLong();
@@ -422,6 +496,13 @@ public class AiChewyDetailService extends ServiceImpl<AiChewyDetailMapper, AiChe
         return id;
     }
 
+    /**
+     * Estimates the number of tokens in the given text using a heuristic that weights
+     * Chinese characters higher than non-Chinese characters.
+     *
+     * @param text the text to estimate token count for; may be null or empty
+     * @return the estimated token count for the text; returns 0 if text is null or empty
+     */
     private int estimateTokens(String text) {
         if (text == null || text.isEmpty()) return 0;
 
@@ -440,6 +521,17 @@ public class AiChewyDetailService extends ServiceImpl<AiChewyDetailMapper, AiChe
         return (int) Math.ceil(tokens);
     }
 
+    /**
+     * Processes optional detail and ingredient information files and updates the AiChewyDetail record that matches the given title.
+     *
+     * If a file is provided and not empty, its contents are processed and stored on the record; empty or null files are ignored.
+     *
+     * @param url the URL to store on the AiChewyDetail record
+     * @param title the title used to locate the record to update
+     * @param detailFile optional file containing detail content; when provided its processed text is stored to the record's `detail` field
+     * @param ingredientInformationFile optional file containing ingredient information; when provided its processed text is stored to the record's `ingredientInformation` field
+     * @throws BusinessException if processing either file fails
+     */
     public void parseChewy(String url, String title, MultipartFile detailFile, MultipartFile ingredientInformationFile) {
         String detail = null;
         if (null != detailFile && !detailFile.isEmpty()) {
