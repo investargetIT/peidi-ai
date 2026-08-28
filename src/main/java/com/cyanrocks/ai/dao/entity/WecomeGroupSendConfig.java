@@ -16,9 +16,9 @@ import java.time.LocalDateTime;
  * @author yangshihao
  */
 @Entity
-@Table(name = "wecome_group_send_config")
+@Table(name = "wecom_group_send_config")
 @Data
-@TableName("wecome_group_send_config")
+@TableName("wecom_group_send_config")
 public class WecomeGroupSendConfig {
 
     @Id
