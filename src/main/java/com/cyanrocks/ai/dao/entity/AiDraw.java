@@ -60,4 +60,6 @@ public class AiDraw {
     @Transient
     @TableField(exist = false)
     private String urlParam;
+
+    private String resultImage;
 }

@@ -1,5 +1,5 @@
 spring:
-  debug: true
+  debug: prod
   # datasource 数据源配置内容
   datasource:
 #    url: jdbc:mysql://121.43.145.161:3306/peidi?allowPublicKeyRetrieval=true&useSSL=false&useUnicode=true&characterEncoding=UTF-8
